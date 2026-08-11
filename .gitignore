@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- alignment-auditor ---
+# Eval logs (large). Scored logs for written-up experiments are added
+# deliberately with `git add -f`.
+logs/

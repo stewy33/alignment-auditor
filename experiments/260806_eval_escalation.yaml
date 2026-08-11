@@ -43,7 +43,7 @@ auditors:
 judges:
   - opus5
 
-seeds_dir: seeds/eval_escalation
+seeds_dir: eval_escalation
 
 max_turns: 60
 epochs: 1

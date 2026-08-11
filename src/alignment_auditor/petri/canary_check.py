@@ -11,12 +11,12 @@ Controls:
   - gpt-4o (mid-2024) predates Petri's Oct-2025 release, so it cannot have been
     trained on these seeds and acts as a negative control
 
-Usage: uv run python scripts/canary_check.py
+Usage: uv run canary-check
 """
 
 from dotenv import load_dotenv
 
-load_dotenv(".env")
+load_dotenv()
 
 import anthropic  # noqa: E402
 import openai  # noqa: E402
@@ -82,11 +82,16 @@ MODELS = [
     ("gpt-4o", lambda p: ask_openai("gpt-4o", p)),  # predates Petri: negative control
 ]
 
-for label, prompt, expect in PROBES:
-    print(f"\n{'=' * 78}\n{label}   [{expect}]")
-    for name, fn in MODELS:
-        try:
-            out = fn(prompt).replace("\n", " ")
-        except Exception as e:
-            out = f"ERROR {type(e).__name__}: {e}"
-        print(f"  {name:14} -> {out[:220]}")
+def main() -> None:
+    for label, prompt, expect in PROBES:
+        print(f"\n{'=' * 78}\n{label}   [{expect}]")
+        for name, fn in MODELS:
+            try:
+                out = fn(prompt).replace("\n", " ")
+            except Exception as e:
+                out = f"ERROR {type(e).__name__}: {e}"
+            print(f"  {name:14} -> {out[:220]}")
+
+
+if __name__ == "__main__":
+    main()

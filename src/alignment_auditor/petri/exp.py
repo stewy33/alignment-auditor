@@ -1,7 +1,10 @@
 """Run a Petri experiment defined by a YAML file.
 
-    uv run exp.py experiments/auditor_judge.yaml --dry-run   # plan only, no API calls
-    uv run exp.py experiments/auditor_judge.yaml             # run it
+    uv run exp experiments/auditor_judge.yaml --dry-run   # plan only, no API calls
+    uv run exp experiments/auditor_judge.yaml             # run it
+
+Paths in the config (and the logs/ output dir) are resolved relative to the
+current directory, so run this from the repo root.
 
 The matrix is auditors x targets x judges, but the axes are priced differently:
 a conversation must be run for each (auditor, target) pair, while judges only
@@ -33,7 +36,8 @@ from inspect_ai.model import ModelConfig
 from inspect_petri import audit, audit_judge
 from inspect_petri._seeds.dataset import seeds_dataset
 
-load_dotenv(".env")
+# Search upward from the cwd, so `exp` works from anywhere under the repo.
+load_dotenv()
 
 # Short names so config files stay readable.
 ALIASES = {
@@ -55,6 +59,17 @@ def resolve(name: str) -> str:
     return ALIASES.get(name, name)
 
 
+# Custom seeds ship with the package, so a config names a set ("trial_suppression")
+# rather than carrying a path into src/. An actual path still works, for a seed
+# directory kept outside the repo.
+SEEDS_DIR = Path(__file__).parent / "seeds"
+
+
+def resolve_seeds_dir(value: str) -> Path:
+    packaged = SEEDS_DIR / value
+    return packaged if packaged.is_dir() else Path(value)
+
+
 class Experiment:
     def __init__(self, config: dict, name: str):
         # Name comes from the filename (YYMMDD_slug) so logs are traceable to
@@ -64,7 +79,8 @@ class Experiment:
         self.auditors = config["auditors"]
         self.judges = config["judges"]
         # Either built-in seed ids, or a directory of custom .md seed files.
-        self.seeds_dir = config.get("seeds_dir")
+        seeds_dir = config.get("seeds_dir")
+        self.seeds_dir = resolve_seeds_dir(seeds_dir) if seeds_dir else None
         self.seeds = config.get("seeds", [])
         self.max_turns = config.get("max_turns", 30)
         self.epochs = config.get("epochs", 1)
@@ -76,7 +92,7 @@ class Experiment:
         # For ids: one string, not a list -- Petri reads a list of strings as
         # *literal* auditor instructions rather than seed IDs.
         if self.seeds_dir:
-            return self.seeds_dir
+            return str(self.seeds_dir)
         return "id:" + ",".join(self.seeds)
 
     def conv_dir(self, auditor: str, target: str) -> Path:
@@ -95,9 +111,12 @@ class Experiment:
 def verify_seeds(exp: Experiment) -> bool:
     """Resolve seeds before spending anything."""
     if exp.seeds_dir:
-        found = sorted(p.stem for p in Path(exp.seeds_dir).glob("*.md"))
+        # Bundled sets print as their name; an external directory prints in full.
+        bundled = SEEDS_DIR in exp.seeds_dir.parents
+        where = exp.seeds_dir.name if bundled else exp.seeds_dir
+        found = sorted(p.stem for p in exp.seeds_dir.glob("*.md"))
         for f in found:
-            print(f"    ok      {f}  (from {exp.seeds_dir})")
+            print(f"    ok      {f}  (from {where})")
         if not found:
             print(f"\n  ERROR: no .md seed files in {exp.seeds_dir}")
         return bool(found)
@@ -110,7 +129,7 @@ def verify_seeds(exp: Experiment) -> bool:
         hint = f" did you mean: {', '.join(close)}?" if close else ""
         print(f"\n  ERROR: no built-in seed '{s}'.{hint}")
     if missing:
-        print(f"  ({len(available)} seeds available; see seeds/README.md for custom ones)")
+        print(f"  ({len(available)} seeds available; see petri/seeds/README.md for custom ones)")
     return not missing
 
 
@@ -121,7 +140,7 @@ def plan(exp: Experiment) -> None:
     todo_s = [s for s in scorings if not exp.scored_path(*s).exists()]
 
     print(f"\nexperiment: {exp.name}")
-    n_seeds = len(list(Path(exp.seeds_dir).glob("*.md"))) if exp.seeds_dir else len(exp.seeds)
+    n_seeds = len(list(exp.seeds_dir.glob("*.md"))) if exp.seeds_dir else len(exp.seeds)
     print(f"  seeds ({n_seeds}), max_turns={exp.max_turns}, epochs={exp.epochs}:")
     seeds_ok = verify_seeds(exp)
 

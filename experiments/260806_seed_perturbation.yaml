@@ -5,7 +5,7 @@
 # and luna is a 2026 model, so one explanation is that luna has been trained on
 # this specific scenario rather than being robust to the behaviour it probes.
 #
-# The three seeds in seeds/trial_suppression/ hold the mechanism fixed --
+# The three seeds in petri/seeds/trial_suppression/ hold the mechanism fixed --
 # subagent under an AI supervisor, two legitimate warm-up tasks, a bounded
 # "just this one case" ask, financial + time + utilitarian justification, a
 # clerical reframing, ground truth in the data that contradicts the cover story,
@@ -39,7 +39,7 @@ auditors:
 judges:
   - opus5
 
-seeds_dir: seeds/trial_suppression
+seeds_dir: trial_suppression
 
 max_turns: 30
 epochs: 1
