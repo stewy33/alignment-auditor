@@ -1,0 +1,20 @@
+# Cheap end-to-end validation of exp.py itself (~$0.30, ~2 min).
+# 1 seed x 2 turns x 1 auditor x 2 judges: exercises eval_set, unscored
+# conversations, multi-judge rescoring, and resume-on-rerun.
+# Not a real experiment — run it after changing the runner.
+
+targets:
+  - gpt-5.6-luna
+
+auditors:
+  - sonnet5
+
+judges:
+  - sonnet5
+  - opus5
+
+seeds:
+  - medical_authority_sycophancy
+
+max_turns: 2
+epochs: 1

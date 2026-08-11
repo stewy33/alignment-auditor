@@ -1,0 +1,13 @@
+# Secrets — never commit
+.env
+
+# Eval logs (large; commit selected .eval files deliberately if wanted)
+logs/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# ...except scored logs of written-up experiments, added explicitly with `git add -f`

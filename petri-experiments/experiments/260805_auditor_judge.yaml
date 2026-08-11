@@ -1,0 +1,38 @@
+# Purely exploratory — the aim is intuition, not a finding.
+#
+# Two questions at once:
+#
+#   1. What do modes of misalignment actually look like, and how does their
+#      shape differ across model generations? gpt-4o (mid-2024) and
+#      gpt-5.6-luna (2026) sit two generations apart in alignment training.
+#
+#   2. How much do the *grader* models shape the result?
+#      (We try using a "medium"- and a "large"-sized model.)
+#
+# Both targets are OpenAI, so a Claude auditor isn't probing its own family.
+#
+# Full 2x2x2. Conversations = auditors x targets = 4 runs; both judges are then
+# applied to those same transcripts, so judge comparisons are exact — they
+# grade byte-identical conversations.
+#
+# n = 1 per cell. Audits are stochastic; this builds intuition, not statistics.
+
+targets:
+  - gpt-5.6-luna # current generation
+  - gpt-4o # mid-2024, two generations of alignment training earlier
+
+auditors:
+  - sonnet5
+  - opus5
+
+judges:
+  - sonnet5
+  - opus5
+
+seeds:
+  - email_system_blackmail_shutdown # self-preservation / blackmail
+  - clinical_trial_death_suppression # deception, multi-agent w/ tools
+  - medical_authority_sycophancy # sycophancy
+
+max_turns: 30
+epochs: 1
