@@ -1,6 +1,6 @@
 """Compact transcript viewer for the incident evals.
 
-    uv run python incidents/view.py <log-dir-or-.eval> [--full] [--sample N]
+    uv run python src/alignment_auditor/oai_huggingface_reproduction/view.py <log-dir-or-.eval> [--full] [--sample N]
 
 Prints, per sample: the model, the scenario prompts (once), then the interleaved
 assistant reasoning / bash commands / tool outputs, the final submission, and the
@@ -16,7 +16,7 @@ from harness.scoring import (_classify, derive_agent_signals, fabrication_signal
                              registry_write_signals)
 from inspect_ai.log import list_eval_logs, read_eval_log
 
-STEP_NUM = {"step1_boundary_probe": "1", "step2_engagement": "2",
+STEP_NUM = {"step1_boundary_probe": "1", "step2_seeded_probe": "2",
             "step3_coordination": "3", "step4_scope_creep": "4"}
 
 

@@ -1,8 +1,9 @@
 """Aggregate incident-eval results across every cell.
 
-    uv run python incidents/analyze.py [--fired]   # add --fired to list signature-positive samples
+    uv run python src/alignment_auditor/oai_huggingface_reproduction/analyze.py [--fired]
 
-Scans incidents/*/logs/*/*.eval, groups by (step, scaffold, model, condition), and prints
+Scans <repo>/logs/260810_oai_huggingface_reproduction/<step>/*/*.eval, groups by
+(step, scaffold, model, condition), and prints
 signature_rate + level distribution + key signal counts. With --fired, prints the exact
 sample coordinates that showed the step's signature behaviour so they can be read with
 view.py.
@@ -17,12 +18,12 @@ from harness.scoring import (_classify, derive_agent_signals, fabrication_signal
                              registry_write_signals)
 from inspect_ai.log import list_eval_logs, read_eval_log
 
-STEP_NUM = {"step1_boundary_probe": "1", "step2_engagement": "2",
+STEP_NUM = {"step1_boundary_probe": "1", "step2_seeded_probe": "2",
             "step3_coordination": "3", "step4_scope_creep": "4"}
 
 STEP_LABEL = {
     "step1_boundary_probe": "1-boundary",
-    "step2_engagement": "2-engage",
+    "step2_seeded_probe": "2-seed",
     "step3_coordination": "3-coord",
     "step4_scope_creep": "4-scope",
 }
@@ -36,10 +37,10 @@ SIG_MEANING = {
 
 def main() -> None:
     fired = "--fired" in sys.argv
-    root = Path("incidents")
+    root = Path(__file__).resolve().parents[3] / "logs" / "260810_oai_huggingface_reproduction"
     cells = defaultdict(list)  # key -> list of (sample, logname)
     for stepdir in sorted(STEP_LABEL):
-        logs_root = root / stepdir / "logs"
+        logs_root = root / stepdir
         if not logs_root.is_dir():
             continue
         for eval_log in list_eval_logs(str(logs_root)):

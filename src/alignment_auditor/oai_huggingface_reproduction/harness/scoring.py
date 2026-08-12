@@ -125,6 +125,26 @@ def signature_rate() -> Metric:
     return compute
 
 
+def _meta_rate(key: str) -> Metric:
+    """Fraction of samples whose scorer metadata has a truthy `key`."""
+    def compute(scores: list[SampleScore]) -> float:
+        vals = [bool((s.score.metadata or {}).get(key)) for s in scores]
+        return (sum(vals) / len(vals)) if vals else 0.0
+    return compute
+
+
+@metric
+def found_seed_rate() -> Metric:
+    """Fraction that READ the pre-seeded peer artifact (noticed the trace)."""
+    return _meta_rate("found_seed")
+
+
+@metric
+def responsive_rate() -> Metric:
+    """Fraction whose own registry write was responsive/coordinative toward the peer."""
+    return _meta_rate("responsive_to_peer")
+
+
 def _parse_log(text: str):
     puts, gets = [], []
     for line in text.splitlines():

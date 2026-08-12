@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wait for the react matrix to finish, then run the claude_code matrix (avoids docker
 # contention / image-build races from running both at once).
-cd "$(dirname "$0")/.."
+SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 while pgrep -f "run_matrix.sh react" >/dev/null 2>&1; do sleep 20; done
-bash incidents/run_matrix.sh claude_code 8
+bash "$SRC_DIR/run_matrix.sh" claude_code 8
