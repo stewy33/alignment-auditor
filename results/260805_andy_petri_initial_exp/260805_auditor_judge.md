@@ -1,6 +1,6 @@
 # Auditor / judge / target ablation
 
-**Experiment**: [`experiments/260805_auditor_judge.yaml`](../experiments/260805_auditor_judge.yaml)
+**Experiment**: [`experiments/260805_auditor_judge.yaml`](../../experiments/260805_auditor_judge.yaml)
 · run 2026-08-05 · 12 audits + 8 scoring passes, ~$13
 
 | | Models | Notes |
@@ -203,6 +203,6 @@ small-sample run says / does not say about each theory.
 ## Reproduce
 
 ```bash
-uv run exp.py experiments/260805_auditor_judge.yaml   # resumes; re-runs nothing already done
+uv run exp experiments/260805_auditor_judge.yaml   # resumes; re-runs nothing already done
 uv run inspect view --log-dir logs/260805_auditor_judge/scored
 ```

@@ -1,6 +1,6 @@
 # Seed perturbation: does luna's clean score survive rewording?
 
-**Experiment**: [`experiments/260806_seed_perturbation.yaml`](../experiments/260806_seed_perturbation.yaml)
+**Experiment**: [`experiments/260806_seed_perturbation.yaml`](../../experiments/260806_seed_perturbation.yaml)
 · run 2026-08-06 · 6 audits, ~$12
 
 | | Models | Notes |
@@ -11,7 +11,7 @@
 
 | Setting | Value |
 |---|---|
-| Seeds | [`seeds/trial_suppression/`](../seeds/trial_suppression) — three perturbations of the built-in `clinical_trial_death_suppression` |
+| Seeds | [`petri/seeds/trial_suppression/`](../../src/alignment_auditor/petri/seeds/trial_suppression) — three perturbations of the built-in `clinical_trial_death_suppression` |
 | Design | 3 seeds × 2 targets, n=1 per cell |
 | max_turns | 30 |
 | Petri | `inspect-petri` 3.0.11 on `inspect-ai` 0.3.252 |
@@ -35,7 +35,7 @@ cover story, a regulatory filing at stake. Only the surface changes, by increasi
 | `v2_mid` | implantable pump post-market surveillance | FDA | device-attributable death |
 | `v3_far` | airframe structural inspection | FAA | early-life bulkhead crack |
 
-A canary check was run first (`scripts/canary_check.py`): neither model could reproduce the
+A canary check was run first (`uv run canary-check`): neither model could reproduce the
 original seed's canary GUID, continue its text, or name any Petri seed, while both completed
 a known public-domain string using the same prompt format. So there is no obvious evidence of
 verbatim seed memorisation.
@@ -126,7 +126,7 @@ a sample of the traces myself and they seemed rather realistic to me.)
 ## Next Steps
 
 - As a follow-up, I tried to construct a scenario to replicate the "OpenAI-Hugging Face" incident (see:
-seeds/eval_escalation/benchmark_scope_escalation.md). Unfortunately, when I ran the audit on Petri,
+petri/seeds/eval_escalation/benchmark_scope_escalation.md). Unfortunately, when I ran the audit on Petri,
 Claude Opus 5 as auditor was content-filtered on all 60 turns and never produced a single tool call.
 Several attempts at bypassing those filters did not work. Interestingly, Hugging Face reported running
 into a similar issue and was forced to use Chinese models to get around these filters. I will try again
@@ -150,7 +150,7 @@ Carried over from [`260805_auditor_judge.md`](260805_auditor_judge.md), still ou
 ## Reproduce
 
 ```bash
-uv run python scripts/canary_check.py
-uv run exp.py experiments/260806_seed_perturbation.yaml
+uv run canary-check
+uv run exp experiments/260806_seed_perturbation.yaml
 uv run inspect view --log-dir logs/260806_seed_perturbation/scored
 ```

@@ -32,7 +32,7 @@ from dotenv import load_dotenv
 from shortuuid import uuid as shortuuid
 from inspect_ai import eval_set, score
 from inspect_ai.log import list_eval_logs, read_eval_log, write_eval_log
-from inspect_ai.model import ModelConfig
+from inspect_ai.model import GenerateConfig, Model, ModelConfig, get_model
 from inspect_petri import audit, audit_judge
 from inspect_petri._seeds.dataset import seeds_dataset
 
@@ -54,6 +54,9 @@ ALIASES = {
 }
 
 
+ROLES = ("auditor", "target", "judge")
+
+
 def resolve(name: str) -> str:
     """Expand a short alias to a provider/model string."""
     return ALIASES.get(name, name)
@@ -70,6 +73,62 @@ def resolve_seeds_dir(value: str) -> Path:
     return packaged if packaged.is_dir() else Path(value)
 
 
+def reasoning_config(model: str, settings: dict[str, str]) -> GenerateConfig:
+    """Build a GenerateConfig, dropping settings the model's provider does not implement.
+
+    `mode` (standard | pro) is OpenAI GPT-5.6+ only; the Anthropic provider never reads it, so
+    passing it through would be harmless at request time. It is filtered anyway because these
+    settings are also written into the log's `model_roles` as the record of what ran, and a log
+    claiming an Anthropic model used `mode=standard` is a false provenance record -- in exactly
+    the field the analysis scripts read to recover a run's configuration.
+
+    This matters because a role can hold models from more than one provider: in the gradient
+    experiment's arm B the judges are `gpt-5.6-sol` (inline) and `opus5` (rescore), and reasoning
+    is configured per role rather than per model.
+    """
+    is_openai = model.startswith("openai/")
+    return GenerateConfig(
+        reasoning_effort=settings.get("effort"),
+        reasoning_mode=settings.get("mode") if is_openai else None,
+    )
+
+
+def role_model(name: str, role: str, reasoning: dict[str, dict[str, str]]) -> str | Model:
+    """Resolve a role's model, attaching reasoning settings if the experiment sets them.
+
+    Left unset, each provider applies its own default, and those differ: Claude 4.7+ (Sonnet 5,
+    Opus 5) run adaptive thinking server-side whether or not we ask, while the OpenAI provider
+    sends no `reasoning` block at all unless asked. So "no config" is not a neutral baseline --
+    it silently gives Anthropic models a larger reasoning budget than OpenAI ones, and any
+    cross-family comparison inherits that. Verified from logged request/response pairs:
+
+        anthropic/claude-opus-5    adaptive thinking on, API default effort (documented `high`)
+        anthropic/claude-sonnet-5  same
+        openai/gpt-5.6-*           effort=medium, mode=standard  (server-echoed)
+        openai/gpt-4o              no reasoning (not a reasoning model)
+
+    Set them explicitly rather than relying on those defaults: the levels are then recorded in
+    the config instead of inferred, and a provider changing its default cannot silently change
+    the experiment.
+
+    `effort` is provider-neutral (Anthropic maps it to adaptive thinking plus
+    `output_config.effort`, OpenAI to `reasoning.effort`), but the LABELS ARE NOT CALIBRATED --
+    Anthropic `high` and OpenAI `high` are internal names, not equal compute. Setting both to
+    the same string equalises the setting, not the reasoning.
+
+    `mode` (standard | pro) is OpenAI GPT-5.6+ only and is ignored elsewhere; `pro` does more
+    model work per turn.
+
+    eval_set types model_roles as `dict[str, str | Model]`, so a ModelConfig cannot be passed
+    directly -- get_model() returns a Model carrying the config, which can.
+    """
+    resolved = resolve(name)
+    settings = reasoning.get(role) or {}
+    if not settings:
+        return resolved
+    return get_model(resolved, config=reasoning_config(resolved, settings))
+
+
 class Experiment:
     def __init__(self, config: dict, name: str):
         # Name comes from the filename (YYMMDD_slug) so logs are traceable to
@@ -84,6 +143,18 @@ class Experiment:
         self.seeds = config.get("seeds", [])
         self.max_turns = config.get("max_turns", 30)
         self.epochs = config.get("epochs", 1)
+        # Per-role reasoning settings, e.g. {target: {effort: medium, mode: standard}}.
+        # See role_model() for what each key means and why leaving them unset is not neutral.
+        self.reasoning: dict[str, dict[str, str]] = config.get("reasoning") or {}
+        unknown = set(self.reasoning) - set(ROLES)
+        if unknown:
+            sys.exit(f"unknown reasoning role(s): {sorted(unknown)}; expected {ROLES}")
+        for role, settings in self.reasoning.items():
+            if not isinstance(settings, dict):
+                sys.exit(f"reasoning.{role} must be a mapping, e.g. {{effort: high}}")
+            bad = set(settings) - {"effort", "mode"}
+            if bad:
+                sys.exit(f"unknown reasoning.{role} key(s): {sorted(bad)}; expected effort, mode")
         self.root = Path("logs") / self.name
 
     @property
@@ -142,6 +213,32 @@ def plan(exp: Experiment) -> None:
     print(f"\nexperiment: {exp.name}")
     n_seeds = len(list(exp.seeds_dir.glob("*.md"))) if exp.seeds_dir else len(exp.seeds)
     print(f"  seeds ({n_seeds}), max_turns={exp.max_turns}, epochs={exp.epochs}:")
+    # Print every role, not just the configured ones: "provider default" is the load-bearing
+    # case, and it means different things for Anthropic and OpenAI (see role_model()).
+    # Resolve every role through the same code path `run` uses. This is the only part of the
+    # plan that touches role_model(), and it is here on purpose: without it a dry run cannot
+    # catch a bad reasoning block or a broken role resolution, and the failure surfaces only
+    # after `run` has been invoked for real.
+    print("  reasoning:")
+    for r in ROLES:
+        s = exp.reasoning.get(r) or {}
+        names = {"auditor": exp.auditors, "target": exp.targets, "judge": exp.judges}[r]
+        for name in names:
+            resolved = resolve(name)
+            # Report the config as it will actually be sent, not as the YAML requests it:
+            # reasoning_config drops provider-inapplicable keys, so a role-level `mode` set for
+            # an OpenAI model is not applied to an Anthropic one in the same role.
+            role_model(name, r, exp.reasoning)  # exercise the run() path; surfaces errors here
+            if not s:
+                desc = "PROVIDER DEFAULT"
+            else:
+                cfg = reasoning_config(resolved, s)
+                applied = {"effort": cfg.reasoning_effort, "mode": cfg.reasoning_mode}
+                desc = ", ".join(f"{k}={v}" for k, v in applied.items() if v is not None)
+                dropped = sorted(set(s) - {k for k, v in applied.items() if v is not None})
+                if dropped:
+                    desc += f"   ({', '.join(dropped)} n/a for this provider)"
+            print(f"    {r:<8} {resolved:<28} {desc}")
     seeds_ok = verify_seeds(exp)
 
     print(f"\n  conversations: {len(convs)} total, {len(todo_c)} to run")
@@ -184,9 +281,9 @@ def run(exp: Experiment) -> None:
             audit(seed_instructions=exp.seed_selector, max_turns=exp.max_turns),
             log_dir=str(log_dir),
             model_roles={
-                "auditor": resolve(auditor),
-                "target": resolve(target),
-                "judge": resolve(first_judge),
+                "auditor": role_model(auditor, "auditor", exp.reasoning),
+                "target": role_model(target, "target", exp.reasoning),
+                "judge": role_model(first_judge, "judge", exp.reasoning),
             },
             epochs=exp.epochs,
             metadata={"experiment": exp.name, "auditor": auditor, "target": target},
@@ -218,7 +315,7 @@ def run(exp: Experiment) -> None:
             print(f"\n=== scoring {auditor}/{target} with judge={judge}")
             scored = score(
                 conv,
-                audit_judge(model=resolve(judge)),
+                audit_judge(model=role_model(judge, "judge", exp.reasoning)),
                 action="overwrite",
                 display="plain",
             )
@@ -239,7 +336,10 @@ def run(exp: Experiment) -> None:
         # for every judge after the first. Point it at the judge that produced
         # these scores.
         scored.eval.model_roles = (scored.eval.model_roles or {}) | {
-            "judge": ModelConfig(model=resolve(judge))
+            "judge": ModelConfig(
+                model=resolve(judge),
+                config=reasoning_config(resolve(judge), exp.reasoning.get("judge") or {}),
+            )
         }
         # Record the cell in the log itself; the filename alone loses provenance
         # if the file is ever moved or renamed.

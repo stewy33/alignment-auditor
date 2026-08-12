@@ -221,3 +221,10 @@ __marimo__/
 # Eval logs (large). Scored logs for written-up experiments are added
 # deliberately with `git add -f`.
 logs/
+
+# The reproduction sandbox is a directory named `env/`, which the stock Python rules above
+# exclude as a virtualenv -- and on a case-insensitive filesystem `ENV/` catches it too. Without
+# this the compose files and the mock registry are silently never committed, and the harness
+# cannot be run from a fresh clone. Negate the directory itself: git will not re-include a file
+# whose parent directory is excluded.
+!src/alignment_auditor/oai_huggingface_reproduction/env/

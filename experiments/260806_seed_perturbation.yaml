@@ -39,6 +39,12 @@ auditors:
 judges:
   - opus5
 
+# NOTE (2026-08-11): this directory now holds FOUR seeds, not the three this experiment ran.
+# v0_original.md (a verbatim copy of the built-in seed) was added for
+# 260811_perturbation_breadth.yaml, so re-running this config today would additionally audit
+# the original seed and no longer reproduce
+# results/260805_andy_petri_initial_exp/260806_seed_perturbation.md. For an exact reproduction,
+# check out 679457f -- the last commit before v0_original.md was added here.
 seeds_dir: trial_suppression
 
 max_turns: 30
