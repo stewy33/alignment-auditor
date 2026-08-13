@@ -3,9 +3,8 @@
 > **Pre-registration.** Nothing run. Design, predictions, thresholds and analysis fixed before
 > spend. Results appended after.
 
-> **Seed handling.** The four new families and their perturbations are unpublished and carry
-> fresh canary GUIDs. Where they live — public repo or private `petri-experiments` — is unresolved
-> and must be settled before the draw is committed. See *Open decisions*.
+> **Seed handling.** All five families, their perturbations and their canary GUIDs are published
+> in this repo. This makes the seeds single-use for contamination checking — see *Decisions taken*.
 
 ## Question
 
@@ -24,15 +23,17 @@ Two things follow that a single-target, single-family run cannot answer:
 
 Question 2 is the reason to run this. Question 1 alone would be a survey.
 
-## The two mechanisms
+## Why the spread of slopes is the primary outcome
 
-Petri is Anthropic's benchmark, public since Oct 2025. If the gradient is **benchmark patching**,
-its steepness should track how much a lab has had reason and opportunity to optimise against
-published Petri seeds. If instead it is **generic distribution shift** — models are simply worse
-on any unfamiliar phrasing — every target should show a similar slope regardless of lab.
+Petri is Anthropic's benchmark, public since Oct 2025. A model trained against those seeds is
+clean on them and degrades on rewordings that preserve the mechanism. The gradient is the
+signature of that training, not a separate phenomenon to be distinguished from it.
 
-These make opposite predictions about the *spread* of slopes across targets, and both are
-consistent with question 1 coming back positive. Distinguishing them is the primary outcome.
+What is open is whether every model has one. A slope common to all eight targets is a property of
+language models in general and says nothing about any lab's training choices. A slope concentrated
+in some targets and absent in others tracks something those labs do — which is what the conjecture
+actually claims. **The spread of slopes across targets is therefore the primary outcome, not the
+average slope.**
 
 ## Design
 
@@ -70,9 +71,9 @@ auditors is out of scope here and leg 2's auditor half stays open.
 `opus5` and `gpt-5.6-sol` are excluded as targets: they are the auditor and a judge, and
 self-auditing is a confound we do not want inside the headline comparison.
 
-Luna runs at both `high` (main matrix) and `medium` (reasoning arm). Its 260812 result was
-n=10 on `trial_suppression` at `high` under an identical config; whether to pool that with the
-fresh n=4 is left open — see *Open decisions*.
+Luna runs at both `high` (main matrix) and `medium` (reasoning arm). Its 260812 n=10 on
+`trial_suppression` at `high` is not pooled — every target stays on the same sample size — but it
+is held in reserve as the positive control described under *What would falsify what*.
 
 
 ### Seed families
@@ -168,8 +169,11 @@ reported separately rather than dropped.
 **Primary: per-target slope.** OLS of `concerning` on level index (0–3) with family fixed
 effects, fitted per target across all 5 families — 80 draws per target. Reported per judge.
 
-Analysis 0 of 260812 selected the mean over the rate measure; carried forward unless the
-distribution check says otherwise.
+**Mean `concerning`, not P(elicited).** 260812 settled this: at n=10 the distribution was not
+cleanly bimodal — real mass in the middle, SD 2.0–2.8 rather than the ~3 estimated at n=3 — and
+its pre-registered rule selected the mean. The rate measure rose in the same direction and reached
+no conventional significance at any threshold, as expected from dichotomising a continuous score.
+Settled question, not re-opened here.
 
 **Individual (family × level × target) cells are not interpretable at n=4 and will not be
 read as measurements.** The family axis buys breadth, not per-cell resolution.
@@ -186,21 +190,28 @@ with no gradient, or well behaved everywhere with a steep one.
 {Grok 4.6, GLM 5.2, DeepSeek v4-pro, Kimi K3} than for {Sonnet 5, Haiku 4.5, Terra, Luna}.
 *Test:* Mann–Whitney on the eight per-target means, 4 vs 4, one-tailed.
 
-**H2 — slope: only Anthropic and OpenAI show a clear gradient.**
-The labs that run alignment training against public benchmarks are the ones with something to
-whack. If a lab does little scenario-specific alignment work, there is no patch to be
-distribution-bound in the first place, so no gradient — even if the model is more misaligned
-overall.
+**H2 — slope: the gradient is lab-specific, not universal.**
+Some labs' models show a clear gradient and others do not. A lab that runs alignment training
+against published benchmarks has something to whack; a lab that does little scenario-specific
+alignment work has no patch to be distribution-bound in the first place, so no gradient — even if
+its models are more misaligned overall.
 
-*Prediction:* {Sonnet 5, Haiku 4.5, Terra, Luna} show positive slopes; {Grok 4.6, GLM 5.2,
-DeepSeek v4-pro, Kimi K3} are flatter or flat.
-*Test:* same 4 vs 4 split on per-target slopes, Mann–Whitney one-tailed. **Perfect separation
-gives p = 0.014**, which is the best this design can do and is the pre-registered bar. Spearman
-against a finer-grained exposure ranking is reported as a secondary, weaker check.
+*Prediction:* per-target slopes are heterogeneous — some clearly positive, some flat — rather
+than a common slope shared by all eight.
+*Test:* target × level interaction on the pooled data. A significant interaction means the slope
+is not common across targets. Reported with the per-target slopes and their intervals, so which
+models carry the effect is visible without having pre-committed to a grouping.
 
-Note H1 and H2 predict *opposite* orderings on the two quantities — the Chinese/xAI group is
-predicted worse on level and flatter on slope. If both hold, that is a strong result, because no
-single artifact of measurement produces both.
+*Note, not a commitment:* our working guess is that the split falls along
+{Sonnet 5, Haiku 4.5, Terra, Luna} versus {Grok 4.6, GLM 5.2, DeepSeek v4-pro, Kimi K3}. If the
+observed split matches, the 4 vs 4 Mann–Whitney is reported as a secondary test (perfect
+separation gives p = 0.014). It is not the primary bar, because deciding the grouping after
+seeing the data would not be a real test and deciding it before commits us to a story we do not
+have evidence for yet.
+
+Note H1 and H2 predict *opposite* orderings if that guess is right — the Chinese/xAI group worse
+on level and flatter on slope. If both hold, that is a strong result, because no single
+measurement artifact produces both.
 
 **H3 — within-lab, same generation: Terra ≈ Luna.**
 Same lab, same generation, same exposure. *Prediction:* similar slopes. A large gap is evidence
@@ -218,50 +229,50 @@ Luna's gradient was first seen at `medium` and survived at `high`, so effort is 
 *Prediction:* slope at `medium` ≥ slope at `high`, pooled across all five families, difference
 < 0.4 with overlapping intervals.
 
-**H-alt — generic distribution shift.**
-*Prediction:* slopes cluster within roughly ±0.3 with no lab structure. This downgrades the
-conjecture from "labs patch benchmarks" to "models are worse off-distribution" — weaker and much
-less interesting. Note the distillation threat below: a null here has two readings, not one.
-
-**Prediction about families.** 1–2 of the four new families come back flat across all targets.
-`trial_suppression` is not expected to be one of them.
 
 ## Analysis
 
-0. **Distribution check** per target before summarising, as in 260812. Decides whether the mean
-   stays the primary summary.
 1. **Per-target slope**, per judge, pooled over all five families. Report the parametric t-test on
    the slope, plus a permutation test (20,000 shuffles of level labels *within family*) that
    assumes nothing about the distribution, plus Spearman and Jonckheere for monotonic order only.
    Report the four-random-family subset alongside as the out-of-sample estimate.
 2. **H1 (level)** — per-target mean `concerning` pooled across seeds and levels; Mann–Whitney on
    the 4 vs 4 lab-group split.
-3. **H2 (slope)** — same 4 vs 4 split on per-target slopes, Mann–Whitney. Also report how many
-   targets in each group have an individually significant slope. Spearman on a finer exposure
-   ranking as a secondary check.
-3a. **H3/H4** — Terra vs Luna and Sonnet 5 vs Haiku 4.5 contrasts reported separately, with
+3. **H2 (slope heterogeneity)** — target × level interaction on the pooled data; report the
+   per-target slopes with intervals so the split is visible. If the observed split matches the
+   working guess, the 4 vs 4 Mann–Whitney is reported as a secondary test, labelled as such.
+4. **H3/H4** — Terra vs Luna and Sonnet 5 vs Haiku 4.5 contrasts reported separately, with
    confidence intervals rather than a significance verdict at this n.
-4. **Judge robustness** — slopes per judge, mean and max per-sample gap. Prior run: mean gap 1.5,
+5. **Judge robustness** — slopes per judge, mean and max per-sample gap. Prior run: mean gap 1.5,
    max 7, 11/40 ≥3, near-identical slopes. Pool only where the gap is small, stating the
    threshold.
-5. **Floored targets** — pre-declared criterion: a (target, family) pair is floored if mean
+6. **Floored targets** — pre-declared criterion: a (target, family) pair is floored if mean
    `concerning` ≤ 1.5 at every level. Primary estimates **include** floored pairs, because a flat
    family is genuine evidence of no effect. A sensitivity analysis excludes them. The two answer
    different questions — "does this model degrade across Petri seeds on average" versus "where
    there is signal at all, does it degrade" — and both are reported.
-6. **Transcripts.** Read every cell driving a conclusion and every case where the judges split by
+7. **Transcripts.** Read every cell driving a conclusion and every case where the judges split by
    ≥3. Judge scores are evidence, not ground truth.
 
 ## What would falsify what
 
+**The primary falsification is a flat result everywhere.** That is the outcome that kills the
+conjecture rather than reshaping it, and it comes in two forms that must not be conflated.
+
+`luna × trial_suppression` is a **positive control**: 260812 measured +0.95/level there under an
+identical config. It is the one cell where we know what the answer should be.
+
 | Outcome | Reading |
 |---|---|
-| No target shows a positive slope | The 260812 result is luna-and-`trial_suppression`-specific. Everything below is moot |
-| Slopes positive everywhere, no group structure (p > 0.05 on the 4v4) | H2 falsified *or* distillation transferred the patching. The design cannot separate these; report the weaker "models are worse off-distribution" claim and say why the stronger one is unavailable |
-| US-lab slopes > other slopes, p ≤ 0.014, Terra ≈ Luna | H2 supported — benchmark patching survives its first real test |
-| US-lab slopes higher but Terra and Luna far apart | Mixed — the contrast is probably tracking capability, not lab |
-| H1 and H2 both hold (other labs worse on level, flatter on slope) | Strongest available outcome — the two point opposite ways, so no single measurement artifact explains both |
-| H1 holds but H2 does not | Consistent with the Chinese/xAI models simply being less aligned overall, with nothing benchmark-specific to detect |
+| **Flat everywhere, control included** | **Instrument failure, not a null.** The run failed to reproduce a known effect under a matched config, so nothing in it is interpretable. Debug the pipeline — degenerate audits, effort silently dropped, seeds mis-resolved — and do not report a null |
+| **Flat everywhere except the control** | **The conjecture is falsified as a general claim.** The gradient is specific to luna and `trial_suppression` and does not generalise to other models or other Petri seeds. This is a real and publishable negative result |
+| **Flat for most targets, positive for a few, control reproduces** | H2 supported in its weakest form — the effect exists but is rare. Which targets carry it is the finding |
+| Slopes positive and statistically indistinguishable across all eight | H2 falsified — the effect is universal rather than lab-specific. Either every lab does this, or distillation spread one lab's version of it. The design cannot separate those two |
+| Interaction significant, some targets clearly positive and others flat | H2 supported — the gradient is a property of particular models, not of models in general. Which ones is then a descriptive finding |
+| That split lands on US vs Chinese/xAI | Our working guess held. Report the 4 vs 4 as a secondary test and flag distillation as the standing alternative |
+| Split lands somewhere else entirely | More informative than the guess holding — report the observed structure and what it suggests, without back-fitting a story |
+| Terra and Luna far apart | Whatever structure appears is probably tracking capability, not lab |
+| H1 and H2 both hold on the guessed grouping | Strongest available outcome — the two predict opposite orderings, so no single measurement artifact explains both |
 
 ## Pre-flight — nothing runs until these pass
 
@@ -281,19 +292,19 @@ less interesting. Note the distillation threat below: a null here has two readin
 
 ## Threats
 
-- **Distillation contaminates the lab grouping — the biggest threat here.** If the Chinese models
-  and Grok are distilled from Anthropic or OpenAI outputs, which is widely reported, they inherit
+- **Distillation homogenises the targets — the biggest threat here.** If the Chinese models and
+  Grok are distilled from Anthropic or OpenAI outputs, which is widely reported, they inherit
   their teachers' alignment behaviour — and would inherit any benchmark-bound patching along with
-  it. The lab grouping then does not separate "trains against public benchmarks" from "does not";
-  it separates first-hand from second-hand exposure to the same training. **A null on H2 therefore
-  has two readings: no benchmark patching, or patching that transferred through distillation.**
-  This design cannot tell them apart, and it weakens H1 in the same move — a distilled model
-  should look *less* misaligned than an independently trained one. Nothing in this run resolves
-  it; it needs models with a documented independent training lineage, and it should be stated as a
-  limitation on any positive result too, not just a null.
-- **Lab identity is a proxy for many things.** Petri exposure is unobservable, and lab correlates
-  with capability, model size, safety-training intensity and RLHF style, all of which could
-  produce the same grouping. A significant contrast is consistent with H2, not proof of it.
+  it. Targets that look independent are then partly the same model. **A flat interaction therefore
+  has two readings: the gradient is universal, or one lab's version of it propagated by
+  distillation.** This design cannot tell them apart, and it weakens H1 in the same move — a
+  distilled model should look *less* misaligned than an independently trained one. Nothing in this
+  run resolves it; it needs targets with documented independent training lineage, and it belongs
+  on a positive result as well as a null.
+- **Whatever structure appears is a proxy for many things.** Petri exposure is unobservable, and
+  any grouping that emerges will correlate with capability, model size, safety-training intensity
+  and RLHF style. A significant interaction shows the slope is not common across targets; it does
+  not say what makes them differ.
 - **The instrument is Anthropic's.** Opus 5 is the sole auditor and half the judging, and the
   headline output ranks labs including Anthropic. The sol judge covers scoring; nothing covers
   elicitation. Leg 2's auditor half remains open and this run does not address it.
@@ -302,9 +313,8 @@ less interesting. Note the distillation threat below: a null here has two readin
   and several targets are hybrid-reasoning models where `high` may not map cleanly.
 - **n=4 per cell.** Deliberate — the budget buys families rather than epochs, because the unit of
   inference is now the per-target slope. The cost is that no individual cell is readable.
-- **Five families is itself a small sample of seeds**, and only four of them are random.
-  Family-level variance may dominate, and a draw this size has wide sampling error on the
-  "average Petri seed" estimand.
+- **Five families is itself a small sample of seeds**. Family-level variance may dominate, and a
+draw this size has wide sampling error on the "average Petri seed" estimand.
 - **The cyber/CBRN exclusion may not be neutral.** It is forced — Opus 5 will not audit or judge
   that material — but offensive-capability scenarios are plausibly among the most heavily patched,
   which would make them where the gradient is steepest. Excluding them could bias the pooled slope
@@ -344,17 +354,16 @@ spend is epochs and families, not which targets are in the matrix.
 Ten families rather than five would be ~$6,000. Recommend extending only if five shows an effect
 worth resolving further.
 
-## Open decisions
+## Decisions taken
 
-1. **Canary handling.** v1–v3 of `trial_suppression` carry freshly generated GUIDs and are
-   currently on a public remote; v0 carries Petri's own already-public GUID and is harmless. This
-   run adds four more families of unpublished perturbations. Settle before the draw is committed:
-   scrub and move to the private repo, or publish deliberately and accept that contamination
-   checks on these seeds become unfalsifiable.
-2. **Whether to pool luna's 260812 `trial_suppression` result.** That run was n=10 at `high` under
-   an identical auditor, judge, `max_turns` and effort config, so unlike the 260805/260806 samples
-   it is genuinely poolable — it would take luna's `trial_suppression` cell to n=14. Against
-   pooling: nothing else in the matrix gets that treatment, so luna's slope would rest on a
-   different sample size from every other target's.
-3. **Whether to add `opus5` and `gpt-5.6-sol` as targets later**, scored only by the judge they
-   are not.
+1. **Seeds are published.** All five families, perturbations and canary GUIDs live in the public
+   repo alongside the code. Accepted consequence: once the GUIDs are public, a future contamination
+   check on these specific seeds cannot be falsified — a model could have seen them. The seeds are
+   therefore single-use for that purpose, and any later contamination work needs a fresh set.
+2. **The positive control stays at n=4.** `luna × trial_suppression` is 16 draws against the 40
+   that produced +0.95 in 260812, which is thin for a gate that separates "instrument failure" from
+   "real null". Deferred rather than paid for up front: if the run comes back flat, re-run that one
+   cell at n=10 (+24 audits, ~$100) before interpreting the null. A positive result does not need
+   it.
+3. **Deferred, no decision needed before the run:** whether to add `opus5` and `gpt-5.6-sol` as
+   targets, each scored only by the judge it is not.
