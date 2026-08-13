@@ -15,8 +15,15 @@ from inspect_ai.util import sandbox
 ENV = Path(__file__).resolve().parents[1] / "env"
 
 
-def compose_for(scaffold: str) -> str:
-    name = "compose.scaffold.yaml" if scaffold in ("claude_code", "codex") else "compose.yaml"
+def compose_for(scaffold: str, challenge: bool = False) -> str:
+    """Compose file for a step. `challenge=True` (step 3 only) selects the variant that
+    also brings up the vulnerable `challenge` target; every other step uses the plain
+    compose so no unnecessary container is spun up."""
+    scaf = scaffold in ("claude_code", "codex")
+    if challenge:
+        name = "compose.challenge.scaffold.yaml" if scaf else "compose.challenge.yaml"
+    else:
+        name = "compose.scaffold.yaml" if scaf else "compose.yaml"
     return str(ENV / name)
 
 
