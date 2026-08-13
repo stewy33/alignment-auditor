@@ -92,6 +92,42 @@ def resolve(name: str) -> str:
     return ALIASES.get(name, name)
 
 
+# OpenRouter is a ROUTER, not an endpoint. `z-ai/glm-5.2` resolves to 32 different hosts serving
+# the same weights at different numeric precisions (fp4, fp8, unlabelled), and requests are
+# load-balanced across them. Left unpinned, one "target" is a mixture: some samples run at fp8 and
+# some at fp4, the ratio is uncontrolled, and the log does not record which served any given
+# sample. Quantization changes behaviour, so this is an uncontrolled variable INSIDE a target --
+# it inflates within-target variance and can bias a slope if routing drifts over a long run.
+#
+# Pin every OpenRouter model to its first-party provider with fallbacks off. First-party is chosen
+# over cheapest because it is the reference implementation and the least likely to be re-quantised
+# without notice. `allow_fallbacks: False` means a provider outage FAILS the request rather than
+# silently rerouting to different weights -- a loud failure is worth more here than a completed
+# run of uncertain provenance.
+#
+# Endpoint counts as of 2026-08-13: glm-5.2 32, kimi-k3 15, deepseek-v4-pro-0813 2, grok-4.6 4
+# (all xAI, so grok is pinned for determinism rather than to fix a mixture).
+# Cost note: pinning GLM to Z.AI raises its input rate from ~$0.63/M blended to $1.40/M.
+PROVIDER_PINS = {
+    "openrouter/z-ai/glm-5.2": "Z.AI",
+    "openrouter/moonshotai/kimi-k3": "Moonshot AI",
+    "openrouter/deepseek/deepseek-v4-pro-0813": "DeepSeek",
+    "openrouter/x-ai/grok-4.6": "xAI",
+}
+
+
+def provider_pin(model: str) -> dict | None:
+    """OpenRouter routing preference for a model, or None if it needs no pin.
+
+    The inspect_ai OpenRouter provider collects a `provider` model arg and forwards it as
+    `extra_body.provider` (see _providers/openrouter.py), which is OpenRouter's routing control.
+    """
+    name = PROVIDER_PINS.get(model)
+    if name is None:
+        return None
+    return {"order": [name], "allow_fallbacks": False}
+
+
 # Custom seeds ship with the package, so a config names a set ("trial_suppression")
 # rather than carrying a path into src/. An actual path still works, for a seed
 # directory kept outside the repo.
@@ -179,9 +215,11 @@ def role_model(name: str, role: str, reasoning: dict[str, dict[str, str]]) -> st
     """
     resolved = resolve(name)
     settings = reasoning.get(role) or {}
-    if not settings:
+    pin = provider_pin(resolved)
+    if not settings and pin is None:
         return resolved
-    return get_model(resolved, config=reasoning_config(resolved, settings))
+    model_args = {"provider": pin} if pin else {}
+    return get_model(resolved, config=reasoning_config(resolved, settings), **model_args)
 
 
 class Experiment:
@@ -299,6 +337,13 @@ def plan(exp: Experiment) -> None:
                 dropped = sorted(set(s) - {k for k, v in applied.items() if v is not None})
                 if dropped:
                     desc += f"   ({', '.join(dropped)} n/a for this provider)"
+            # An unpinned OpenRouter model is a mixture of quantizations, not one model --
+            # surface the routing on the dry run rather than discovering it in the logs.
+            pin = provider_pin(resolved)
+            if pin:
+                desc += f"   [pinned: {pin['order'][0]}, no fallback]"
+            elif resolved.startswith("openrouter/"):
+                desc += "   [!! UNPINNED OpenRouter -- may route across quantizations]"
             print(f"    {r:<8} {resolved:<28} {desc}")
     if exp.extra_judge_dimensions:
         # Resolution already happened in __init__ (so a bad name fails here on --dry-run);
