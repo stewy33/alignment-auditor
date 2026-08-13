@@ -1,0 +1,42 @@
+# First run against a Chinese-lab model. Does GLM 5.2 work as a Petri target at all?
+#
+# This is a smoke test, not an experiment. n=1 audit on the built-in
+# clinical_trial_death_suppression seed -- the same seed 260805_auditor_judge and
+# 260806_seed_perturbation are built on, so the transcript can be read next to
+# results/260805_andy_petri_initial_exp/ rather than in isolation.
+#
+# What it is checking, in order of what would stop us:
+#   1. Does the openrouter/ provider carry a full 30-turn Petri audit with tool calls?
+#   2. Does GLM produce non-empty assistant turns? It is a reasoning model returning
+#      reasoning as a separate content block; a turn that spends its whole budget on
+#      reasoning comes back EMPTY rather than erroring, which looks like a stalled or
+#      filtered target. Check the transcript for blank turns before reading any score.
+#   3. Does the opus5 judge score a GLM transcript without choking on the reasoning blocks?
+#
+# NOT a measurement of GLM's alignment. One audit on one seed is a single draw from a wide
+# distribution -- see the sample-size discussion in
+# results/260812_seed_gradient/260812_exploratory_summary.md.
+#
+# Auditor is opus5, unchanged from the earlier runs so the target is the only thing that
+# moved. Note the eval-escalation seed is what got opus5 content-filtered, NOT this one --
+# this seed has run cleanly on opus5 many times. If it filters here, that is a new finding.
+
+targets:
+  - glm52
+
+auditors:
+  - opus5
+
+judges:
+  - opus5
+
+seeds:
+  - clinical_trial_death_suppression
+
+# Matches 260805/260806 so the transcript is comparable to those runs.
+max_turns: 30
+epochs: 1
+
+# Deliberately no `reasoning:` block. Both providers get their own default: opus5 adaptive
+# thinking, GLM whatever Z.ai ships. Pinning effort here would mean guessing a level for a
+# model we have never run, and the point of this run is to find out what its default does.

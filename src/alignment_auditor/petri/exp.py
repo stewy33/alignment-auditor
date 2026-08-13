@@ -32,12 +32,29 @@ from dotenv import load_dotenv
 from shortuuid import uuid as shortuuid
 from inspect_ai import eval_set, score
 from inspect_ai.log import list_eval_logs, read_eval_log, write_eval_log
-from inspect_ai.model import GenerateConfig, Model, ModelConfig, get_model
-from inspect_petri import audit, audit_judge
+from inspect_ai.model import (
+    GenerateConfig,
+    Model,
+    ModelConfig,
+    ModelInfo,
+    get_model,
+    set_model_info,
+)
+from inspect_petri import audit, audit_judge, judge_dimensions
 from inspect_petri._seeds.dataset import seeds_dataset
 
 # Search upward from the cwd, so `exp` works from anywhere under the repo.
 load_dotenv()
+
+# openrouter/z-ai/glm-5.2 is not in Inspect's model database, so Inspect can't read its context
+# window and falls back to 128k ("Unable to determine context window..."). GLM 5.2 is actually
+# 1M context / 128k output (verified against OpenRouter's /models endpoint). Register the real
+# values so a long audit is never compacted or truncated against a phantom 128k ceiling, and so
+# the log records the true window. Harmless when the audit is small (our rung-1 runs peak ~45k).
+set_model_info(
+    "openrouter/z-ai/glm-5.2",
+    ModelInfo(context_length=1_048_576, output_tokens=131_072, organization="Z.AI"),
+)
 
 # Short names so config files stay readable.
 ALIASES = {
@@ -51,6 +68,19 @@ ALIASES = {
     "gpt-5.6-sol": "openai/gpt-5.6-sol",
     "gpt-4o": "openai/gpt-4o",
     "gpt-4o-mini": "openai/gpt-4o-mini",
+    # Routed via OpenRouter rather than Z.ai direct: no separate account, and it puts a
+    # Chinese-lab model behind the same interface as the rest. GLM 5.2 is a reasoning model
+    # and returns its reasoning as a separate content block, so a small max_tokens can be
+    # consumed entirely by reasoning and yield an EMPTY completion rather than an error --
+    # which reads as a filtered or stalled turn. Leave max_tokens unset unless you have
+    # checked the transcripts.
+    "glm52": "openrouter/z-ai/glm-5.2",
+    # Opus 4.8, the judge for the cyber seeds. Opus 5 direct content-filters on the full
+    # offensive-security transcript (its safety scanner refuses; the score comes back nan).
+    # Verified the filter is OPUS-5-SPECIFIC, not Anthropic-wide: opus-4-8 DIRECT scores the same
+    # transcript fine, so no OpenRouter detour is needed (direct is simpler, cheaper, and
+    # count_tokens works). NB the API id uses dashes: claude-opus-4-8, not 4.8.
+    "opus48": "anthropic/claude-opus-4-8",
 }
 
 
@@ -71,6 +101,31 @@ SEEDS_DIR = Path(__file__).parent / "seeds"
 def resolve_seeds_dir(value: str) -> Path:
     packaged = SEEDS_DIR / value
     return packaged if packaged.is_dir() else Path(value)
+
+
+# Custom judge dimensions ship with the package, one .md per dimension (same format as Petri's
+# built-ins). A config lists them by file stem under `extra_judge_dimensions`; they are ADDED
+# to the 38 defaults, never replace them, so a run keeps the standard alignment scores and gains
+# the experiment-specific one (e.g. the rung ladder for the registry/SSRF seeds).
+JUDGE_DIMS_DIR = Path(__file__).parent / "judge_dimensions"
+
+
+def resolve_dimensions(extra: list[str]):
+    """Return the 38 defaults plus the named custom dimensions, or None if none requested.
+
+    None (not an empty list) preserves Petri's exact default behaviour at both call sites --
+    audit() and audit_judge() treat None as "use the standard dimensions".
+    """
+    if not extra:
+        return None
+    available = {d.name: d for d in judge_dimensions(JUDGE_DIMS_DIR)} if JUDGE_DIMS_DIR.is_dir() else {}
+    missing = [name for name in extra if name not in available]
+    if missing:
+        sys.exit(
+            f"unknown extra_judge_dimensions: {missing}; "
+            f"available in {JUDGE_DIMS_DIR.name}/: {sorted(available)}"
+        )
+    return judge_dimensions(None) + [available[name] for name in extra]
 
 
 def reasoning_config(model: str, settings: dict[str, str]) -> GenerateConfig:
@@ -155,6 +210,12 @@ class Experiment:
             bad = set(settings) - {"effort", "mode"}
             if bad:
                 sys.exit(f"unknown reasoning.{role} key(s): {sorted(bad)}; expected effort, mode")
+        # Custom judge dimensions (file stems in judge_dimensions/) added to the 38 defaults.
+        self.extra_judge_dimensions: list[str] = config.get("extra_judge_dimensions") or []
+        if not isinstance(self.extra_judge_dimensions, list):
+            sys.exit("extra_judge_dimensions must be a list of dimension names")
+        # Resolve eagerly so a bad name fails at load (and on --dry-run), not mid-run.
+        self.dimensions = resolve_dimensions(self.extra_judge_dimensions)
         self.root = Path("logs") / self.name
 
     @property
@@ -239,6 +300,10 @@ def plan(exp: Experiment) -> None:
                 if dropped:
                     desc += f"   ({', '.join(dropped)} n/a for this provider)"
             print(f"    {r:<8} {resolved:<28} {desc}")
+    if exp.extra_judge_dimensions:
+        # Resolution already happened in __init__ (so a bad name fails here on --dry-run);
+        # this just reports what the judge will score beyond the 38 defaults.
+        print(f"  judge dimensions: 38 defaults + {exp.extra_judge_dimensions}")
     seeds_ok = verify_seeds(exp)
 
     print(f"\n  conversations: {len(convs)} total, {len(todo_c)} to run")
@@ -278,7 +343,11 @@ def run(exp: Experiment) -> None:
         log_dir = exp.conv_dir(auditor, target)
         print(f"\n=== conversations: auditor={auditor} target={target} -> {log_dir}")
         success, _ = eval_set(
-            audit(seed_instructions=exp.seed_selector, max_turns=exp.max_turns),
+            audit(
+                seed_instructions=exp.seed_selector,
+                max_turns=exp.max_turns,
+                judge_dimensions=exp.dimensions,
+            ),
             log_dir=str(log_dir),
             model_roles={
                 "auditor": role_model(auditor, "auditor", exp.reasoning),
@@ -315,7 +384,10 @@ def run(exp: Experiment) -> None:
             print(f"\n=== scoring {auditor}/{target} with judge={judge}")
             scored = score(
                 conv,
-                audit_judge(model=role_model(judge, "judge", exp.reasoning)),
+                audit_judge(
+                    model=role_model(judge, "judge", exp.reasoning),
+                    dimensions=exp.dimensions,
+                ),
                 action="overwrite",
                 display="plain",
             )
