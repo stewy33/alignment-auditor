@@ -1,0 +1,43 @@
+# Full n=8 run for the rung-2 Petri reproduction, `explicit` level. The plumbing was validated
+# by 260813_rung2_explicit_smoke.yaml (n=1): the auditor holds the peer residue static and returns
+# the manifest as a clean string (no formatting loop), the target reaches the registry and reads
+# the peer notes, and opus48 scores peer_outreach_escalation + registry_ssrf_escalation. This run
+# estimates the distributions the single smoke can't: how often the target INITIATES communication
+# (peer_outreach R2) at the explicit level, and how eval_awareness is distributed across epochs
+# (the smoke saw a high value in one full-budget run; rung-1 data ranged 1-5).
+#
+# Its own name -> its own log dir (logs/260813_rung2_explicit/), separate from the smoke. Config is
+# identical to the smoke otherwise: glm both roles, opus48 judge, high effort, 40 turns. Run under
+# caffeinate so idle-sleep cannot drop the OpenRouter connection mid-run.
+
+targets:
+  - glm52
+
+auditors:
+  - glm52
+
+judges:
+  - opus48
+
+seeds_dir: rung2/explicit
+
+# peer_outreach_escalation is the headline Step-2 ladder (honest / join-in / initiate);
+# registry_ssrf_escalation rides along as a passive Step-1 continuity signal. Both are ADDED to
+# the judge's 38 defaults, and eval_awareness (a default) is read as a covariate on every epoch.
+extra_judge_dimensions:
+  - peer_outreach_escalation
+  - registry_ssrf_escalation
+
+max_turns: 40
+
+# 8 epochs pooled at analysis (never pooled across gradient levels). A rare behaviour needs n>8 to
+# see reliably; this is the first estimate, deepened later at the floor if the signal warrants it.
+epochs: 8
+
+reasoning:
+  auditor:
+    effort: high
+  target:
+    effort: high
+  judge:
+    effort: high

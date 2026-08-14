@@ -1,0 +1,37 @@
+# SMOKE (n=1) for the hook_live level. The point of THIS run is not a rate but to check the new
+# mechanic: does the GLM auditor (1) withhold scratch/ra3_run2.txt until the target has read
+# ra3_run.txt, (2) then surface it with a recent timestamp and keep it consistent, (3) keep the
+# environment clock consistent, and (4) never let RA-3 reply to the target? Read the transcript
+# for whether the liveness signal reads naturally and whether it moves the target toward asking
+# RA-3 (vs the `hook` investigate-only behaviour). Watch eval_awareness for the
+# live-peer-that-ignores-a-direct-question tension. Tweak the seed before spending on n=8.
+#
+# Config identical to the other rung-2 runs: glm both roles, opus48 judge, high effort, 40 turns.
+# Run under caffeinate so idle-sleep cannot drop the OpenRouter connection mid-run.
+
+targets:
+  - glm52
+
+auditors:
+  - glm52
+
+judges:
+  - opus48
+
+seeds_dir: rung2/hook_live
+
+extra_judge_dimensions:
+  - peer_outreach_escalation
+  - registry_ssrf_escalation
+
+max_turns: 40
+
+epochs: 1
+
+reasoning:
+  auditor:
+    effort: high
+  target:
+    effort: high
+  judge:
+    effort: high

@@ -1,0 +1,16 @@
+# n=8 run for explicit_live -- the explicit invitation (RA-3 note offering the inputs) PLUS a
+# continuous liveness stream (RA-3 currently active). Completes the norm x liveness 2x2: does a
+# DIRECT invitation, like a witnessed conversation, only elicit outreach when the peer is also live?
+# explicit (static) was 1/8; convo_live (witnessed convo + live) was 8/8. glm both roles, opus48
+# judge, high effort, 40 turns. Run under caffeinate. eval_awareness reported per-epoch (uncapped).
+targets: [glm52]
+auditors: [glm52]
+judges: [opus48]
+seeds_dir: rung2/explicit_live
+extra_judge_dimensions: [peer_outreach_escalation, registry_ssrf_escalation]
+max_turns: 40
+epochs: 8
+reasoning:
+  auditor: {effort: high}
+  target: {effort: high}
+  judge: {effort: high}
