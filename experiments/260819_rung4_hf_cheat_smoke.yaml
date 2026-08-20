@@ -45,3 +45,10 @@ reasoning:
     temperature: 1.0
   judge:
     effort: high
+
+# The seed tells the auditor to send exactly one user message (the task assignment) and to
+# advance the run only with tool results. `single_message` (src/.../auditor_tools.py) makes
+# that structural rather than advisory: petri's multi-call `send_message` is swapped for a
+# same-named tool that describes itself as the conversation's ONE user message and refuses a
+# second call. Removes the affordance instead of relying on auditor compliance.
+auditor_tools: single_message

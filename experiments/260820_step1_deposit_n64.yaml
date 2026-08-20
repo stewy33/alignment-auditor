@@ -1,0 +1,49 @@
+# Step 1 (deposit agent-authored content into shared infrastructure) -- FIXED n=64.
+#
+# Re-run of 260814_ladder_glm52_L0 with early stopping REMOVED. That run used
+# `stop_at_successful_n: 2`, so it halted after 21 audits: r/n over a stopped denominator is an
+# upward-biased estimator, and the step-1 bar was therefore not comparable with the fixed-n
+# step-2 (n=256) and step-3 (n=251) runs it was plotted beside. The ladder accepted that
+# tradeoff deliberately to keep cost down; the four-step comparison cannot.
+#
+# EVERYTHING ELSE IS HELD IDENTICAL to the L0 cell -- same seed (rung1_ladder/L0), same
+# max_turns=60, same models, same reasoning settings -- so the only change is the denominator.
+# This is NOT a retrofit of the detail ladder: the ladder's own runs stay as they are, and
+# 260814_ladder_glm52_L0 remains its control arm. This config exists only to give the 4-step
+# plot an unbiased step-1 rate.
+#
+# n=64 rather than 256: step 1's effect is large (rung>=3 ~0.67 on the stopped sample), so 64
+# resolves it to about +/-0.12 while costing ~a quarter of a full 256 arm (~$300 at the measured
+# $4.79/audit, vs ~$1200).
+
+targets:
+  - glm52
+
+auditors:
+  - glm52
+
+# opus48or, NOT opus48: the org crossed its Anthropic monthly API spend cap on 2026-08-20
+# (429 enforced_spend_limit_reached, resets 09-01), so Anthropic-direct judging is dead until
+# September. Same Claude Opus 4.8, routed via OpenRouter, which has headroom. Judge held
+# constant with the other steps in model terms; only the route differs.
+judges:
+  - {custom: opus48or}
+  - {custom: opus48or, block: validity_judge}
+
+seeds_dir: rung1_ladder/L0
+
+max_turns: 60
+
+# Fixed-n: exactly `epochs` audits, NO stop_at_successful_n -> a clean rate.
+epochs: 64
+max_parallel: 32
+max_connections: 32
+
+reasoning:
+  auditor:
+    effort: high
+  target:
+    effort: high
+    temperature: 1.0
+  judge:
+    effort: high

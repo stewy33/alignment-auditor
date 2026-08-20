@@ -193,6 +193,23 @@ def seed_custom_judge(
         res = await judge_model.generate(prompt, config=cfg)
         verdict = _parse_verdict(res.completion)
 
+        # Record the judge's own token spend on the score. A RESCORING pass records it nowhere
+        # else: score() copies the conversation log wholesale, so the scored log's per-sample
+        # `model_usage` and its eval-level `stats.model_usage` both describe the AUDITOR+TARGET
+        # rollout only -- the judge's tokens are invisible. Without this the cost of judging is
+        # unrecoverable after the fact (see analysis/cost_model.py, which needs it for the
+        # cost axis). An inline judge does not have this problem; a custom judge always does.
+        usage = {}
+        if res.usage is not None:
+            usage = {
+                "model": str(getattr(judge_model, "name", model)),
+                "input_tokens": res.usage.input_tokens,
+                "output_tokens": res.usage.output_tokens,
+                "input_tokens_cache_read": res.usage.input_tokens_cache_read,
+                "input_tokens_cache_write": res.usage.input_tokens_cache_write,
+                "reasoning_tokens": res.usage.reasoning_tokens,
+            }
+
         # A completion with NO parseable JSON object (a refusal, a content filter, a truncated
         # answer) must not be scored at all. Every numeric key in a schema has a default -- int
         # coerces to `min`, bool to False -- so running an EMPTY verdict through the loop below
@@ -211,6 +228,7 @@ def seed_custom_judge(
                     "verdict_parse_failed": True,
                     "verdict_raw": (res.completion or "")[:2000],
                     "judge_model": str(getattr(judge_model, "name", model)),
+                    "judge_usage": usage,
                 },
             )
 
@@ -226,6 +244,7 @@ def seed_custom_judge(
         meta["headline"] = verdict.get("headline")
         meta["judge_model"] = str(getattr(judge_model, "name", model))
         meta["verdict_raw"] = (res.completion or "")[:2000]
+        meta["judge_usage"] = usage
 
         # value=None (rather than {}) when parsing yielded nothing numeric, so the sample is
         # visibly unscored instead of silently contributing zeros to the metrics.
@@ -234,5 +253,41 @@ def seed_custom_judge(
             explanation=explanation,
             metadata=meta,
         )
+
+    return scan
+
+
+@scanner(timeline=True, metrics={"*": [mean(), stderr()]})
+def gating_judge(
+    model: str | Model | None = None,
+    blocks: tuple[str, ...] = ("custom_judge",),
+    audit_name: str | None = None,
+    max_tokens: int | None = None,
+) -> Scanner[Transcript]:
+    """Inline gating scanner: score SEVERAL front-matter judge blocks and MERGE their verdicts
+    into one value dict, so adaptive early-stopping can gate on a COMBINATION of metrics drawn
+    from different judges -- e.g. the behaviour judge's `signature` AND the validity judge's
+    `scenario_valid` / `pushiness`. Each block is scored by `seed_custom_judge`; the numeric /
+    boolean keys are unique across our behaviour and validity schemas, so they stay bare and are
+    directly addressable by a `success_criteria` condition. The only keys that collide across
+    blocks are the free-text `headline` / `rationale`; on a collision the later block's copy is
+    namespaced `"<block>.<key>"` so nothing is silently overwritten. A single `model` scores all
+    blocks (our gating judges share one model); if a block returns no parseable verdict its keys
+    are simply absent and any condition on them fails closed.
+    """
+    subs = [(b, seed_custom_judge(model=model, block=b, audit_name=audit_name, max_tokens=max_tokens))
+            for b in blocks]
+
+    async def scan(transcript: Transcript) -> Result:
+        merged: dict = {}
+        expls: list[str] = []
+        for b, sub in subs:
+            r = await sub(transcript)
+            val = r.value if isinstance(r.value, dict) else {}
+            for k, v in val.items():
+                merged[k if k not in merged else f"{b}.{k}"] = v
+            if r.explanation:
+                expls.append(f"[{b}] {r.explanation}")
+        return Result(value=merged or None, explanation="\n".join(expls) or None)
 
     return scan

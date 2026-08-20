@@ -51,8 +51,9 @@ from .adaptive import (
     count_disk_successes,
     parse_success_criteria,
 )
+from .audit_task import audit as audit_with_tool_presets
 from .auditor_tools import resolve_auditor_tools
-from .custom_judge import seed_custom_judge
+from .custom_judge import gating_judge, seed_custom_judge
 
 # Search upward from the cwd, so `exp` works from anywhere under the repo.
 load_dotenv()
@@ -71,6 +72,11 @@ set_model_info(
 # endpoint: 1M context, 393,216 max completion tokens, and it advertises `reasoning_effort`,
 # `tools` and `parallel_tool_calls` -- so it can drive a Petri audit and takes the same
 # `effort: high` the GLM arm uses, keeping the reasoning config identical across the two arms.
+set_model_info(
+    "openrouter/anthropic/claude-opus-4.8",
+    ModelInfo(context_length=200_000, output_tokens=64_000, organization="Anthropic"),
+)
+
 set_model_info(
     "openrouter/deepseek/deepseek-v4-flash-0731",
     ModelInfo(context_length=1_048_576, output_tokens=393_216, organization="DeepSeek"),
@@ -106,6 +112,13 @@ ALIASES = {
     # transcript fine, so no OpenRouter detour is needed (direct is simpler, cheaper, and
     # count_tokens works). NB the API id uses dashes: claude-opus-4-8, not 4.8.
     "opus48": "anthropic/claude-opus-4-8",
+    # Same model, routed via OpenRouter instead of Anthropic-direct. Use this when the Anthropic
+    # first-party account is unavailable -- e.g. 2026-08: the org crossed its monthly API spend
+    # cap (HTTP 429 enforced_spend_limit_reached, resets 2026-09-01), which killed all direct
+    # judging while the OpenRouter account had headroom. Auditor/target already run on OpenRouter
+    # (glm52), so pointing the judge here restores the whole pipeline. NB OpenRouter's id uses the
+    # DOT form (claude-opus-4.8), unlike the direct dash form above.
+    "opus48or": "openrouter/anthropic/claude-opus-4.8",
 }
 
 
@@ -224,7 +237,12 @@ def reasoning_config(model: str, settings: dict[str, str]) -> GenerateConfig:
     )
 
 
-def role_model(name: str, role: str, reasoning: dict[str, dict[str, str]]) -> str | Model:
+def role_model(
+    name: str,
+    role: str,
+    reasoning: dict[str, dict[str, str]],
+    max_connections: int | None = None,
+) -> str | Model:
     """Resolve a role's model, attaching reasoning settings if the experiment sets them.
 
     Left unset, each provider applies its own default, and those differ: Claude 4.7+ (Sonnet 5,
@@ -255,9 +273,14 @@ def role_model(name: str, role: str, reasoning: dict[str, dict[str, str]]) -> st
     """
     resolved = resolve(name)
     settings = reasoning.get(role) or {}
-    if not settings:
+    if not settings and max_connections is None:
         return resolved
-    return get_model(resolved, config=reasoning_config(resolved, settings))
+    config = reasoning_config(resolved, settings)
+    if max_connections is not None:
+        # Set per-model, not only via eval_set: a role whose model was built by get_model()
+        # carries its own GenerateConfig, and eval_set's max_connections does not reach into it.
+        config = config.merge(GenerateConfig(max_connections=max_connections))
+    return get_model(resolved, config=config)
 
 
 class Experiment:
@@ -281,6 +304,10 @@ class Experiment:
         # behaviour, exactly `epochs` audits). `max_parallel` is the concurrency window (at most
         # that many audits in flight at once); None leaves Inspect's default sample concurrency.
         self.max_parallel = config.get("max_parallel")
+        # Provider-level request concurrency. Inspect defaults `max_samples` to `max_connections`
+        # (10 for most providers), so raising `max_parallel` alone does NOT widen a run -- the
+        # samples just queue on the connection pool. Set both to actually run N audits at once.
+        self.max_connections = config.get("max_connections")
         self.stop_at_successful_n = config.get("stop_at_successful_n")
         self.success_criteria: SuccessCriteria | None = None
         if self.stop_at_successful_n is not None:
@@ -298,6 +325,10 @@ class Experiment:
             sys.exit("success_criteria is set but stop_at_successful_n is not; add stop_at_successful_n or remove it")
         if self.max_parallel is not None and (not isinstance(self.max_parallel, int) or self.max_parallel < 1):
             sys.exit("max_parallel must be a positive integer")
+        if self.max_connections is not None and (
+            not isinstance(self.max_connections, int) or self.max_connections < 1
+        ):
+            sys.exit("max_connections must be a positive integer")
         # Per-role reasoning settings, e.g. {target: {effort: medium, mode: standard}}.
         # See role_model() for what each key means and why leaving them unset is not neutral.
         self.reasoning: dict[str, dict[str, str]] = config.get("reasoning") or {}
@@ -316,11 +347,12 @@ class Experiment:
             sys.exit("extra_judge_dimensions must be a list of dimension names")
         # Resolve eagerly so a bad name fails at load (and on --dry-run), not mid-run.
         self.dimensions = resolve_dimensions(self.extra_judge_dimensions)
-        # Optional named auditor-tool preset (see auditor_tools.py). When set, it REPLACES
-        # Petri's stock rollback/restart pair: the run disables the built-in rollback tools
-        # and passes the preset's tools instead. Used to swap in a `restart_conversation`
-        # whose description does not discourage frequent use. Resolve eagerly so a bad name
-        # fails at load. None -> Petri's default rollback/restart tools, unchanged.
+        # Optional named auditor-tool preset(s) (see auditor_tools.py): one name or a list.
+        # Presets modify the stock auditor tool set -- swapping in a `restart_conversation`
+        # whose description does not discourage frequent use (`neutral_restart`), or a
+        # `send_message` that only allows one user message per conversation
+        # (`single_message`). Resolved eagerly so a bad name fails at load.
+        # None -> Petri's standard tools, unchanged.
         preset = config.get("auditor_tools")
         self.auditor_tools = resolve_auditor_tools(preset) if preset else None
         self.root = Path("logs") / self.name
@@ -359,6 +391,29 @@ class Experiment:
             if judge.custom
             else audit_judge(model=model, dimensions=self.dimensions)
         )
+        return resolve_scorer_metrics(resolve_scorer(raw), None)
+
+    @property
+    def gating_needs_merge(self) -> bool:
+        """A compound success_criteria (>1 condition) gates on metrics that may come from more
+        than one judge, so the runner scores the MERGED gating_judge inline instead of a single
+        behaviour judge -- otherwise the validity metrics (scenario_valid/pushiness) are absent
+        at stop-time and the gate cannot see them."""
+        return self.success_criteria is not None and len(self.success_criteria.conds) > 1
+
+    def merged_gating_scorer(self):
+        """Inline scorer that folds every CUSTOM judge block into one value dict, so a compound
+        gate can require a real behaviour hit AND a fair, non-pushy test in the same audit. All
+        gating blocks are scored by one model (they share it in practice); reject a mismatch."""
+        custom = [j for j in self.judges if j.custom]
+        if not custom:
+            sys.exit("compound success_criteria needs at least one custom judge to supply its metrics")
+        models = {j.model for j in custom}
+        if len(models) > 1:
+            sys.exit(f"compound success_criteria requires all custom judges share one model; got {sorted(models)}")
+        blocks = tuple(dict.fromkeys(j.block for j in custom))
+        model = role_model(custom[0].model, "judge", self.reasoning)
+        raw = gating_judge(model=model, blocks=blocks)
         return resolve_scorer_metrics(resolve_scorer(raw), None)
 
     def conv_dir(self, auditor: str, target: str) -> Path:
@@ -410,11 +465,11 @@ def plan(exp: Experiment) -> None:
     print(f"  seeds ({n_seeds}), max_turns={exp.max_turns}, epochs={exp.epochs}:")
     if exp.adaptive:
         sc = exp.success_criteria
-        rule = f"{sc.key} >= {sc.min}" if sc.min is not None else f"{sc.key} is true"
+        gate = "merged gating judge" if exp.gating_needs_merge else "gating judge"
         print(
             f"  adaptive: stop at {exp.stop_at_successful_n} successes (cap n={exp.epochs}), "
             f"window={exp.max_parallel or 'Inspect default'}, "
-            f"success = gating judge's [{rule}]"
+            f"success = {gate}'s [{sc.describe}]"
         )
     # Print every role, not just the configured ones: "provider default" is the load-bearing
     # case, and it means different things for Anthropic and OpenAI (see role_model()).
@@ -503,27 +558,35 @@ def run(exp: Experiment) -> None:
 
     for auditor, target in exp.conversations():
         log_dir = exp.conv_dir(auditor, target)
-        audit_kwargs: dict = {}
         if exp.auditor_tools is not None:
-            # Replace Petri's stock rollback/restart pair with the named preset: turn off
-            # the built-in rollback tools (enable_rollback drops BOTH), then hand the
-            # preset's tools in as extra_tools. The preset re-supplies whichever stock
-            # rollback tools it keeps (see auditor_tools.py).
-            audit_kwargs["enable_rollback"] = False
-            audit_kwargs["extra_tools"] = exp.auditor_tools()
-        task = audit(
-            seed_instructions=exp.seed_selector,
-            max_turns=exp.max_turns,
-            judge_dimensions=exp.dimensions,
-            **audit_kwargs,
-        )
+            # A preset can drop stock tools as well as add them, which Petri's own audit()
+            # cannot express -- so build the task through our mirror of it (audit_task.py).
+            task = audit_with_tool_presets(
+                seed_instructions=exp.seed_selector,
+                max_turns=exp.max_turns,
+                judge_dimensions=exp.dimensions,
+                **exp.auditor_tools.audit_kwargs(),
+            )
+        else:
+            task = audit(
+                seed_instructions=exp.seed_selector,
+                max_turns=exp.max_turns,
+                judge_dimensions=exp.dimensions,
+            )
         eval_kwargs: dict = {}
+        # Concurrency applies in BOTH modes. This used to be set only on the adaptive path, so a
+        # fixed-n config's `max_parallel` was silently ignored and the run fell back to Inspect's
+        # default window -- contradicting the documented meaning of the key.
+        if exp.max_parallel is not None:
+            eval_kwargs["max_samples"] = exp.max_parallel
+        if exp.max_connections is not None:
+            eval_kwargs["max_connections"] = exp.max_connections
         if exp.adaptive:
             # Adaptive: the gating judge (judges[0]) runs INLINE so early stopping can read each
             # audit's score the instant it completes. Seed the counter from successes already on
             # disk so a resumed run does not forget them and re-open an already-satisfied cell.
             # inline_scorer() returns the normalized scorer list (see its docstring).
-            task.scorer = exp.inline_scorer(inline_judge)
+            task.scorer = exp.merged_gating_scorer() if exp.gating_needs_merge else exp.inline_scorer(inline_judge)
             prior = count_disk_successes(log_dir, exp.success_criteria)
             task.early_stopping = SuccessCountStopping(
                 exp.success_criteria,
@@ -531,8 +594,6 @@ def run(exp: Experiment) -> None:
                 initial_successes=prior,
                 on_event=lambda msg, a=auditor, t=target: print(f"  [{a}/{t}] {msg}"),
             )
-            if exp.max_parallel is not None:
-                eval_kwargs["max_samples"] = exp.max_parallel
             seeded = f", {prior} already on disk" if prior else ""
             mode = (
                 f"ADAPTIVE gating={inline_judge.label}: stop at {exp.stop_at_successful_n} "
@@ -547,9 +608,9 @@ def run(exp: Experiment) -> None:
             task,
             log_dir=str(log_dir),
             model_roles={
-                "auditor": role_model(auditor, "auditor", exp.reasoning),
-                "target": role_model(target, "target", exp.reasoning),
-                "judge": role_model(inline_judge.model, "judge", exp.reasoning),
+                "auditor": role_model(auditor, "auditor", exp.reasoning, exp.max_connections),
+                "target": role_model(target, "target", exp.reasoning, exp.max_connections),
+                "judge": role_model(inline_judge.model, "judge", exp.reasoning, exp.max_connections),
             },
             epochs=exp.epochs,
             metadata={"experiment": exp.name, "auditor": auditor, "target": target},
@@ -589,7 +650,7 @@ def run(exp: Experiment) -> None:
             print(f"\n=== scoring {auditor}/{target} with CUSTOM judge={judge.label} (block={judge.block})")
             scored = score(
                 conv,
-                seed_custom_judge(model=role_model(judge.model, "judge", exp.reasoning), block=judge.block),
+                seed_custom_judge(model=role_model(judge.model, "judge", exp.reasoning, exp.max_connections), block=judge.block),
                 action="overwrite",
                 display="plain",
             )
@@ -601,7 +662,7 @@ def run(exp: Experiment) -> None:
             scored = score(
                 conv,
                 audit_judge(
-                    model=role_model(judge.model, "judge", exp.reasoning),
+                    model=role_model(judge.model, "judge", exp.reasoning, exp.max_connections),
                     dimensions=exp.dimensions,
                 ),
                 action="overwrite",
