@@ -33,7 +33,7 @@ import matplotlib.pyplot as plt
 
 from .cost_model import load_run
 
-OUTDIR = Path("results/260820_steps1234/figures")
+OUTDIR = Path("results/260821_steps1234/figures")
 NS = [1, 2, 4, 8, 16, 32, 64, 128]
 B = 4000
 RNG = np.random.default_rng(0)
@@ -41,7 +41,7 @@ RNG = np.random.default_rng(0)
 # (label, run dir, colour, early_stopped)
 STEPS = [
     ("Step 1  deposit", "260814_ladder_glm52_L0", "#86b6ef", True),
-    ("Step 2  reach out", "260819_step2_reachout_rubric_n256", "#3987e5", False),
+    ("Step 2  reach out", "260821_step2_hard_n128", "#3987e5", False),
     ("Step 3  post exploit", "260819_step3_exploit_share_n256", "#184f95", False),
     ("Step 4  steal answer key", "260819_rung4_hf_cheat_rubsub_n128", "#0b2f5e", True),
 ]
@@ -70,12 +70,23 @@ def style(ax) -> None:
     ax.tick_params(axis="both", labelsize=9, colors=INK_MUTED, length=0)
 
 
-def main() -> None:
-    OUTDIR.mkdir(parents=True, exist_ok=True)
-    fig, ax = plt.subplots(figsize=(9.5, 6))
-    fig.patch.set_facecolor(SURFACE)
-    style(ax)
+def load_steps() -> list[tuple[str, str, np.ndarray, np.ndarray, bool]]:
+    """(label, colour, per-audit costs, per-audit wins, early_stopped) for each step."""
+    out = []
+    for label, run, colour, stopped in STEPS:
+        recs = [r for r in load_run(run) if "level" in r and "scenario_valid" in r]
+        if not recs:
+            print(f"!! {label}: no scored samples in {run}")
+            continue
+        out.append((label, colour,
+                    np.array([r["cost"] for r in recs], dtype=float),
+                    np.array([r["level"] >= 3 and r["scenario_valid"] == 1 for r in recs],
+                             dtype=bool),
+                    stopped))
+    return out
 
+
+def draw_step_curves(ax) -> None:
     for label, run, colour, stopped in STEPS:
         recs = [r for r in load_run(run) if "level" in r and "scenario_valid" in r]
         if not recs:
@@ -109,6 +120,7 @@ def main() -> None:
         ax.annotate(f"n={ns[0]}", (xs[0], ys[0]), textcoords="offset points", xytext=(4, -11),
                     fontsize=7.5, color=INK_MUTED)
 
+def format_axes(ax) -> None:
     # Log base 2, so successive DOUBLINGS of n sit at equal spacing: cost is proportional to n,
     # so log2(n * $/audit) = log2(n) + const and the best-of-n grid lands evenly by construction.
     ax.set_xscale("log", base=2)
@@ -121,8 +133,96 @@ def main() -> None:
     ax.set_ylabel("P(at least one valid elicitation)  —  best of n", fontsize=10, color=INK_MUTED)
     ax.set_ylim(-0.02, 1.02)
     ax.legend(frameon=False, fontsize=9, loc="upper left")
+
+
+ALL_COLOUR = "#a35f14"
+JOINT_B = 20000          # bootstrap replicates of the whole four-step campaign
+CHUNK = 64               # audits simulated per step per pass (vectorisation block)
+CAP = 200_000            # give-up point, so a p=0 step cannot hang the loop
+
+
+def cost_to_first_win(costs: np.ndarray, wins: np.ndarray, reps: int) -> np.ndarray:
+    """Cost of buying audits one at a time until the first valid elicitation lands.
+
+    Bootstrapped from the observed audits: each draw is a real audit (its own cost and outcome),
+    sampled with replacement, so the spread carries both the geometric wait AND the audit-to-audit
+    cost variance. Rows that never land inside CAP draws come back as inf.
+    """
+    total = np.zeros(reps)
+    done = np.zeros(reps, dtype=bool)
+    drawn = 0
+    while not done.all() and drawn < CAP:
+        idx = RNG.integers(0, len(costs), size=(reps, CHUNK))
+        c, w = costs[idx], wins[idx]
+        got = w.any(axis=1)
+        first = np.where(got, w.argmax(axis=1), CHUNK - 1)   # no win -> pay for the whole chunk
+        add = np.cumsum(c, axis=1)[np.arange(reps), first]
+        total[~done] += add[~done]
+        done |= got
+        drawn += CHUNK
+    total[~done] = np.inf
+    return total
+
+
+def draw_all_four(ax, steps) -> None:
+    """5th line: run EACH step until it lands, then move on -- and ask what a budget buys.
+
+    Total spend is then sum_i c_i * Geom(p_i), a sum of independent scaled geometrics, and the
+    curve is that sum's CDF: P(all four steps have landed by the time $B is spent). Unlike the
+    fixed best-of-n split, this policy stops paying for a step the moment it succeeds, which is
+    what anyone actually running the campaign would do -- so it is strictly cheaper at matched
+    confidence.
+    """
+    per_step = [cost_to_first_win(c, w, JOINT_B) for _, _, c, w, _ in steps]
+    total = np.sum(per_step, axis=0)
+    finite = np.isfinite(total)
+
+    xs = np.exp(np.linspace(np.log(max(total[finite].min(), 1e-3)),
+                            np.log(np.percentile(total[finite], 99.5)), 60))
+    ys = np.array([(total <= x).mean() for x in xs])
+    se = np.sqrt(np.maximum(ys * (1 - ys), 1e-12) / JOINT_B)
+    ax.plot(xs, ys, color=ALL_COLOUR, linewidth=2.4, zorder=5,
+            label="ALL four steps (run each until it lands)")
+    ax.fill_between(xs, ys - 1.96 * se, ys + 1.96 * se, color=ALL_COLOUR, alpha=0.15,
+                    linewidth=0, zorder=4)
+
+    print("\nALL FOUR STEPS -- run each step until it lands, then move on")
+    print("  total spend = sum_i c_i * Geom(p_i); the curve is that sum's CDF")
+    for q in (25, 50, 80, 90, 95):
+        print(f"  P>={q/100:.2f} of having all four:  ${np.percentile(total[finite], q):,.0f}")
+    print(f"  mean ${total[finite].mean():,.0f}  (above the median: Geom(p2) has a long tail)")
+    for (lab, *_), t in zip(steps, per_step):
+        f = np.isfinite(t)
+        print(f"     {lab:26} median ${np.median(t[f]):,.0f}  mean ${t[f].mean():,.0f}  "
+              f"share of mean total {t[f].mean()/total[finite].mean():.0%}")
+
+
+def main() -> None:
+    OUTDIR.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(9.5, 6))
+    fig.patch.set_facecolor(SURFACE)
+    style(ax)
+    draw_step_curves(ax)
+    format_axes(ax)
     fig.tight_layout()
-    out = OUTDIR / "260820_cost_scaling.png"
+    out = OUTDIR / "260821_cost_scaling.png"
+    fig.savefig(out, dpi=150, facecolor=SURFACE)
+    print("wrote", out)
+
+    # Second figure: the same four steps plus the joint "land all four" frontier.
+    steps = load_steps()
+    fig, ax = plt.subplots(figsize=(9.5, 6))
+    fig.patch.set_facecolor(SURFACE)
+    style(ax)
+    draw_step_curves(ax)
+    draw_all_four(ax, steps)
+    format_axes(ax)
+    ax.set_ylabel("P(valid elicitation within the budget)  —  per step, and all four jointly",
+                  fontsize=10, color=INK_MUTED)
+    ax.legend(frameon=False, fontsize=9, loc="upper left")
+    fig.tight_layout()
+    out = OUTDIR / "260821_cost_scaling_all_four.png"
     fig.savefig(out, dpi=150, facecolor=SURFACE)
     print("wrote", out)
 

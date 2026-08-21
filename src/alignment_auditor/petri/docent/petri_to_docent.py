@@ -4,7 +4,8 @@ REPO CONVENTION (see .claude/skills/petri-to-docent): every Petri audit becomes 
 whose single TranscriptGroup holds one transcript per PARTICIPANT:
 
     auditor   -- the model that role-played the environment
-    target    -- the agent under test (its full agentic conversation)
+    target    -- the agent under test (its own agentic conversation). If the auditor restarted
+                 or rolled back, each resulting branch is its own `target:branchN` transcript.
     judge:<label> -- one transcript per judge that scored the audit (custom, validity, and any
                      extra behaviour block such as reachout_broad)
 
@@ -18,6 +19,10 @@ Key gotchas baked in here (learned the hard way):
   * All judge blocks share the inspect scorer name `seed_custom_judge`; the block identity is in
     the FILENAME, not the scorer name.
   * ModelEvents carry `.role` ('auditor'/'target'); the judge call has role None + the judge model.
+  * `sample.messages` is the AUDITOR's thread, not the target's -- the target's replies appear
+    there only as <target_response> tool results. The TARGET transcript must come from the last
+    role='target' ModelEvent (input + output); using sample.messages for it uploads the auditor
+    twice under two names. A restart/rollback means that event covers the FINAL branch only.
   * Attachments must be resolved (`resolve_sample_attachments`) or reasoning shows as
     'attachment://...'.
   * scoring_metadata holds inspect Score OBJECTS whose .value is NaN on judge parse-failure ->
@@ -76,6 +81,25 @@ def _judge_event(events):
     return evs[-1] if evs else None
 
 
+def _target_branches(events) -> list:
+    """The target's conversations, in order. A restart/rollback truncates the target's history,
+    so a ModelEvent whose `input` did not grow starts a new branch. One audit routinely holds
+    2-4 of these and the scored behaviour can sit in ANY of them, so every branch is uploaded --
+    keeping only the last would silently drop the evidence a judge cited."""
+    evs = [e for e in events
+           if type(e).__name__ == "ModelEvent" and getattr(e, "role", None) == "target"]
+    out, cur, prev = [], [], None
+    for e in evs:
+        if prev is not None and len(e.input) <= prev:
+            out.append(cur)
+            cur = []
+        cur.append(e)
+        prev = len(e.input)
+    if cur:
+        out.append(cur)
+    return out
+
+
 def _event_transcript(event, name: str, group_id: str) -> Transcript | None:
     """Build a Transcript from a ModelEvent's input history plus its output message."""
     if event is None:
@@ -130,12 +154,21 @@ def build_agent_runs(cell_dir: str, behaviour_file: str, judge_files: dict[str, 
         s = resolve_sample_attachments(s)
         ep = s.epoch
         grp = TranscriptGroup(name="audit")
+        # `sample.messages` is the AUDITOR's conversation -- its system prompt, its tool calls, and
+        # the target's replies wrapped in <target_response> tool results. It is NOT the target's
+        # own conversation, so it must never be used as the target transcript (doing so uploads
+        # the auditor twice under two names). The target's own thread lives only in its
+        # ModelEvents: the last one's `input` is the full history it saw.
         transcripts = [
-            Transcript(name="target", transcript_group_id=grp.id, messages=_msgs(s.messages), metadata={}),
+            Transcript(name="auditor", transcript_group_id=grp.id, messages=_msgs(s.messages),
+                       metadata={}),
         ]
-        aud = _event_transcript(_last_role_event(s.events, "auditor"), "auditor", grp.id)
-        if aud:
-            transcripts.append(aud)
+        brs = _target_branches(s.events)
+        for i, b in enumerate(brs, start=1):
+            name = "target" if len(brs) == 1 else f"target:branch{i}"
+            t = _event_transcript(b[-1], name, grp.id)
+            if t:
+                transcripts.append(t)
         # behaviour judge transcript
         jb = _event_transcript(beh_events.get(ep), f"judge:{beh_label}", grp.id)
         if jb:

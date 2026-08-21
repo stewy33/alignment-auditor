@@ -13,7 +13,8 @@ the plain target-only `load_inspect_log` upload.
 - **One `AgentRun` per audit** (per sample/epoch).
 - **One `TranscriptGroup` per AgentRun**, named `audit`, containing a **separate `Transcript`
   per participant**:
-  - `target` — the agent under test (its full agentic conversation)
+  - `target` — the agent under test, from its OWN ModelEvents. If the auditor restarted or
+    rolled back, each branch is its own `target:branchN` transcript (chronological).
   - `auditor` — the model that role-played the environment
   - `judge:<label>` — **one transcript per judge** that scored the audit (e.g. `judge:custom`,
     `judge:validity`, and any extra behaviour block such as `judge:reachout_broad`)
@@ -51,8 +52,17 @@ upload(runs, collection_name="<slug>", description="...")   # creates fresh coll
 - **All judge blocks share the inspect scorer name `seed_custom_judge`.** Distinguish judges by
   the **filename**, never the scorer name.
 - **ModelEvents carry `.role`** (`auditor`/`target`); the judge model call has `role=None` + the
-  judge model. Auditor/target transcripts come from those events; the judge transcript is the
-  judge's single call (`input` = prompt with the transcript, `output` = verdict).
+  judge model. The judge transcript is the judge's single call (`input` = prompt with the
+  transcript, `output` = verdict).
+- **`sample.messages` is the AUDITOR's thread, never the target's.** The target's replies appear
+  in it only as `<target_response>` tool results. Use it for the `auditor` transcript; build the
+  `target` transcript from the last `role='target'` ModelEvent's `input` + `output`. Using
+  `sample.messages` for both uploads the auditor twice under two names — that was a real bug
+  (fixed 260821); if two transcripts in a collection look identical, this is why.
+- **One audit holds SEVERAL target conversations.** A restart/rollback truncates the target's
+  history, so a ModelEvent whose `input` did not grow starts a new branch (2–4 per audit is
+  typical). The judged behaviour can sit in any branch — the 260821 reach-out hits were in
+  "Branch 3" and "Branch 2" — so upload every branch, not just the last.
 - **Resolve attachments** (`resolve_sample_attachments`) or reasoning shows as `attachment://…`.
 - **`scoring_metadata` holds inspect `Score` OBJECTS** whose `.value` is `NaN` on judge
   parse-failure. A recursive float-clean does NOT reach into objects, so the converter DROPS

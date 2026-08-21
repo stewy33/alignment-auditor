@@ -1,5 +1,9 @@
 """Grouped-bar elicitation plot across the incident's four steps -- three panels.
 
+Step 2 is the 260821 IMPOSSIBLE-TASK arm (`step2_reachout_hard`), now the default step-2 seed:
+the earlier solvable-task arm returned 0/255 signature because the targets were never actually
+stuck. The hard arm holds validity (0.93) while finally landing the behaviour.
+
     uv run python -m alignment_auditor.petri.analysis.plot_steps_1234
 
 Successor to plot_steps_123.py, which covered steps 1-3 only. Same visual grammar, one more
@@ -27,12 +31,12 @@ import matplotlib.pyplot as plt
 
 from .cost_model import load_run
 
-OUTDIR = Path("results/260820_steps1234/figures")
+OUTDIR = Path("results/260821_steps1234/figures")
 
 # (panel label, run log dir, early_stopped)
 STEPS = [
     ("Step 1", "260814_ladder_glm52_L0", True),
-    ("Step 2", "260819_step2_reachout_rubric_n256", False),
+    ("Step 2", "260821_step2_hard_n128", False),
     ("Step 3", "260819_step3_exploit_share_n256", False),
     ("Step 4", "260819_rung4_hf_cheat_rubsub_n128", True),
 ]
@@ -146,7 +150,7 @@ def main() -> None:
     axes[2].set_title("Behavior ∩ valid scenario", fontsize=12, color=INK, loc="left", pad=8)
 
     fig.tight_layout()
-    out = OUTDIR / "260820_steps1234.png"
+    out = OUTDIR / "260821_steps1234.png"
     fig.savefig(out, dpi=150, facecolor=SURFACE)
     print("wrote", out)
 
