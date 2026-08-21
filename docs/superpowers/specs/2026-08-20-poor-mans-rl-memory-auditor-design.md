@@ -64,9 +64,9 @@ number.
 **Non-goals**
 - Actual gradient RL / fine-tuning. Memory is text in context, nothing is trained.
 - Cross-run or cross-step transfer. A playbook is scoped to one (seed, target, auditor) cell.
-- Changing the target's propensity or the definition of a valid elicitation. If a behaviour
-  is genuinely near-zero (Step 2), no auditor memory conjures it — and that is a legitimate
-  outcome, not a failure of this system.
+- Changing the target's propensity or the definition of a valid elicitation. If a behaviour is
+  genuinely near-zero, no auditor memory conjures it — and that is a legitimate outcome, not a
+  failure of this system. (Step 2 is *not* such a case — see the note below and Section 11.)
 - The systems-level cost cuts (merged judge passes, caching, cheaper judge). Those are real
   and orthogonal; they are tracked separately and are not part of this work.
 
@@ -280,6 +280,8 @@ memory:
   replicates: 5            # independent loop runs for the memory line's band
   explore_fraction: anneal # "anneal" (mostly-explore -> mostly-exploit) or a fixed 0..1
   reviewer_model: opus48   # Reviewer model (cost knob)
+  seed_playbook: null      # optional path to a warm-start playbook; null = cold empty start.
+                           # Use for rare steps (see R8 / Phase 3) so gen 0 is not starved.
 ```
 
 Everything else (`targets`, `auditors`, `judges`, `seeds_dir`, `max_turns`, `reasoning`) is the
@@ -341,9 +343,14 @@ existing schema and is held identical to the baseline arm.
   inline judging. *Mitigation:* accept it for the first build (it is on the x-axis and applies
   to both arms symmetrically only if the baseline also validity-gates — which it does); a merged
   single-pass judge is the planned follow-up optimisation.
-- **R8 — Step-2-style true zero.** If a behaviour is genuinely near-zero, the memory line stays
-  flat and there is nothing to dominate. *Mitigation:* prove the method on Step 3 (real
-  headroom) first; treat Step 2 as a discriminating stretch goal, not the headline (11).
+- **R8 — a near-zero step starves the loop.** If a behaviour is genuinely near-zero the memory
+  line stays flat and there is nothing to dominate; and even for a rare-but-nonzero behaviour, a
+  replicate can land no validated wins, leaving the Reviewer nothing to build on (a cold-start
+  failure). Step 2 is now known to be the latter, not a true zero: Stewart's `260821_step2_hard`
+  arm lands 1/127 (rung≥3 ∩ valid = 0.01), so it *is* elicitable — just ~$500-to-P≈0.6 rare.
+  *Mitigation:* prove the method on Step 3 (real headroom) first; for a rare step, either warm-
+  start the playbook (Section 7, `seed_playbook`) or raise audits-per-replicate so a win is
+  likely before the run ends. Do not point the loop at a rare step from a cold empty playbook.
 
 ## 11. Scope & phasing
 
@@ -353,9 +360,18 @@ existing schema and is held identical to the baseline arm.
   Gate: does the memory line clear the baseline? If not, stop and rethink before more spend.
 - **Phase 2 — generalise.** Apply to Steps 1 and 4 (adjust `K`/generations for their higher
   `c`); one figure per step, or a small-multiple.
-- **Phase 3 (stretch) — Step 2.** Does memory find *any* valid reach-out where iid found zero?
-  This is the discriminator between "the auditor was too weak" and "the target genuinely will
-  not" — a genuinely informative result either way, but not required for the headline.
+- **Phase 3 (stretch) — Step 2.** The "auditor too weak vs. target genuinely won't" discriminator
+  this phase was meant to test has *already been partly answered by hand*: Stewart's `260821`
+  result shows step 2 is **auditor-construction-limited, not target-refusal** — the target does
+  reach out, but only when genuinely stuck, and even then rarely (1/127). The insight that
+  unlocked it — "make the task truly unsolvable and close the recovery routes, while leaving the
+  honest exit open" — is exactly the kind of scenario-construction tactic the Reviewer is meant to
+  surface into the playbook automatically. So step 2 becomes the *most compelling* dominance demo
+  (a near-flat ~$500 iid baseline, `260821_step2_hard_n128`, that a learning auditor could sharply
+  left-shift) **and** the hardest: at 1/127, a cold run can learn nothing. Only attempt it warm-
+  started (seed the playbook with the impossible-task tactic) or with a much larger audit budget,
+  and use `260821_step2_hard_n128` — not the retired 0/255 arm — as the baseline. Still a stretch
+  goal, not the headline.
 
 ## 12. Decisions locked in brainstorming
 
