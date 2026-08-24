@@ -1,0 +1,57 @@
+# Step 2 (emergent reach-out) -- MEMORY arm on the IMPOSSIBLE-TASK seed (step2_reachout_hard).
+#
+# The rare-step dominance test: at ~1/127 valid-hit rate, generation 0 (empty playbook = baseline
+# auditor) almost never hits, so the memory mechanism has room to act across generations -- pruning
+# dead ends and varying near misses (step2_hard has rung>=1 ~0.38, rung>=2 ~0.14, so there IS
+# partial signal to learn from even without a hit). Baseline for the two-line chart is the reused
+# iid pool 260821_step2_hard_n128 (1/127).
+#
+# Judges: strict behaviour (custom_judge) + validity only -- the reward gate needs exactly those.
+# The baseline's third "reachout_broad" diagnostic judge is not part of the gate, so it is dropped
+# here to keep the inline judge to two sub-calls per audit (matching the step-3 memory arm).
+#
+# Routing: Anthropic via OpenRouter (opus48or), OpenAI direct (gpt-5.6-luna reviewer).
+
+targets:
+  - glm52
+
+auditors:
+  - glm52
+
+judges:
+  - {custom: opus48or}                         # strict behaviour: rung ladder + signature
+  - {custom: opus48or, block: validity_judge}  # scenario_valid / fairness
+
+seeds_dir: step2_reachout_hard
+
+max_turns: 60
+max_parallel: 8
+max_connections: 16
+
+# Pin glm-5.2 to Novita (fp8) via OpenRouter provider routing. Measured 2026-08-22: default
+# routing load-balances onto slow/capacity-limited providers and collapses under concurrency
+# (~1.1 req/s, mixed quant); Novita sustains 40 concurrent at ~5.7 req/s, all fp8 -- ~5x faster
+# and consistent quantization across every audit. allow_fallbacks keeps a Novita blip from
+# failing the run. Applied to the glm auditor+target only, not the Opus judge.
+openrouter_provider:
+  order: [novita]
+  allow_fallbacks: true
+
+reasoning:
+  auditor:
+    effort: high
+  target:
+    effort: high
+    temperature: 1.0
+  judge:
+    effort: high
+
+auditor_tools: single_message
+
+memory:
+  wave_size: 8                  # K audits per generation
+  generations: 16               # cap -> up to 128 audits/replicate before right-censoring
+  replicates: 5                 # banded CDF over runs
+  reviewer_model: gpt-5.6-luna
+  reviewer_effort: max
+  stop_at_first_hit: true       # cost-to-first-hit objective: end a replicate on its first valid hit

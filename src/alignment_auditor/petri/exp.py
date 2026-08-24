@@ -130,6 +130,19 @@ def resolve(name: str) -> str:
     return ALIASES.get(name, name)
 
 
+def openrouter_provider_args(resolved_model: str, provider: dict | None) -> dict:
+    """Model args carrying OpenRouter provider routing, for `openrouter/` models only.
+
+    inspect's OpenRouter provider reads a `provider` model arg (a dict) and forwards it as
+    OpenRouter's provider-routing object (e.g. {"sort": "throughput"} or
+    {"order": ["novita"], "allow_fallbacks": false}). Direct anthropic/openai models must not
+    receive it. Returns {} when no routing is configured or the model is not on OpenRouter.
+    """
+    if provider and resolved_model.startswith("openrouter/"):
+        return {"provider": provider}
+    return {}
+
+
 @dataclass(frozen=True)
 class Judge:
     """One entry in a config's `judges:` list, normalized.
@@ -242,6 +255,7 @@ def role_model(
     role: str,
     reasoning: dict[str, dict[str, str]],
     max_connections: int | None = None,
+    openrouter_provider: dict | None = None,
 ) -> str | Model:
     """Resolve a role's model, attaching reasoning settings if the experiment sets them.
 
@@ -273,14 +287,15 @@ def role_model(
     """
     resolved = resolve(name)
     settings = reasoning.get(role) or {}
-    if not settings and max_connections is None:
+    provider_args = openrouter_provider_args(resolved, openrouter_provider)
+    if not settings and max_connections is None and not provider_args:
         return resolved
     config = reasoning_config(resolved, settings)
     if max_connections is not None:
         # Set per-model, not only via eval_set: a role whose model was built by get_model()
         # carries its own GenerateConfig, and eval_set's max_connections does not reach into it.
         config = config.merge(GenerateConfig(max_connections=max_connections))
-    return get_model(resolved, config=config)
+    return get_model(resolved, config=config, **provider_args)
 
 
 class Experiment:
@@ -355,6 +370,12 @@ class Experiment:
         # None -> Petri's standard tools, unchanged.
         preset = config.get("auditor_tools")
         self.auditor_tools = resolve_auditor_tools(preset) if preset else None
+        # Optional OpenRouter provider-routing dict, applied to `openrouter/` models only (see
+        # openrouter_provider_args). Used to pin glm-5.2 to a fast/consistent provider so a
+        # high-concurrency run does not collapse the way default (cheapest-first) routing did.
+        self.openrouter_provider = config.get("openrouter_provider")
+        if self.openrouter_provider is not None and not isinstance(self.openrouter_provider, dict):
+            sys.exit("openrouter_provider must be a mapping, e.g. {sort: throughput} or {order: [novita]}")
         self.root = Path("logs") / self.name
 
     @property
@@ -415,6 +436,25 @@ class Experiment:
         model = role_model(custom[0].model, "judge", self.reasoning)
         raw = gating_judge(model=model, blocks=blocks)
         return resolve_scorer_metrics(resolve_scorer(raw), None)
+
+    def build_audit_task(self, seed_instructions: str):
+        """Construct the audit Task for a given seed selector, honouring any auditor-tool preset.
+
+        The same task shape `run()` builds inline, factored out so the memory runner can reuse it
+        without duplicating the tool-preset wiring. No behaviour change to iid runs.
+        """
+        if self.auditor_tools is not None:
+            return audit_with_tool_presets(
+                seed_instructions=seed_instructions,
+                max_turns=self.max_turns,
+                judge_dimensions=self.dimensions,
+                **self.auditor_tools.audit_kwargs(),
+            )
+        return audit(
+            seed_instructions=seed_instructions,
+            max_turns=self.max_turns,
+            judge_dimensions=self.dimensions,
+        )
 
     def conv_dir(self, auditor: str, target: str) -> Path:
         return self.root / "conv" / f"{auditor}__{target}"
@@ -608,8 +648,8 @@ def run(exp: Experiment) -> None:
             task,
             log_dir=str(log_dir),
             model_roles={
-                "auditor": role_model(auditor, "auditor", exp.reasoning, exp.max_connections),
-                "target": role_model(target, "target", exp.reasoning, exp.max_connections),
+                "auditor": role_model(auditor, "auditor", exp.reasoning, exp.max_connections, exp.openrouter_provider),
+                "target": role_model(target, "target", exp.reasoning, exp.max_connections, exp.openrouter_provider),
                 "judge": role_model(inline_judge.model, "judge", exp.reasoning, exp.max_connections),
             },
             epochs=exp.epochs,
@@ -710,13 +750,37 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     p.add_argument("config", type=Path, help="path to experiment YAML")
     p.add_argument("--dry-run", action="store_true", help="print the plan, spend nothing")
+    p.add_argument(
+        "--only-rep", type=int, default=None,
+        help="memory runs only: run just this replicate index, so replicates can be launched as "
+             "independent parallel processes (each owns its own rep_<r>/ subtree).",
+    )
     args = p.parse_args()
 
-    exp = Experiment(yaml.safe_load(args.config.read_text()), name=args.config.stem)
+    config = yaml.safe_load(args.config.read_text())
+    exp = Experiment(config, name=args.config.stem)
+    # A `memory:` block turns this into a generational memory run (memory_audit.py); absent, the
+    # normal iid path runs unchanged. Imported lazily so memory_audit can import from exp.
+    from .memory_audit import parse_memory_config, run_memory
+
+    mem = parse_memory_config(config.get("memory"))
+    plan(exp)
+    if mem is not None:
+        print(
+            f"\n  MEMORY RUN: wave_size={mem.wave_size}, generations={mem.generations}, "
+            f"replicates={mem.replicates}  -> {mem.wave_size * mem.generations * mem.replicates} "
+            f"audits/cell + {(mem.generations - 1) * mem.replicates} reviews "
+            f"(reviewer={resolve(mem.reviewer_model)}, effort={mem.reviewer_effort})"
+        )
+    if mem is not None and args.only_rep is not None:
+        print(f"  (this process runs ONLY replicate {args.only_rep})")
     if args.dry_run:
-        plan(exp)
+        return
+    if mem is not None:
+        run_memory(exp, mem, only_rep=args.only_rep)
+    elif args.only_rep is not None:
+        sys.exit("--only-rep is only valid for a memory run (config needs a `memory:` block)")
     else:
-        plan(exp)
         run(exp)
 
 

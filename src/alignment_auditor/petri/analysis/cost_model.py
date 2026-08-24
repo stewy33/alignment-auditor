@@ -57,11 +57,42 @@ GLM52 = Price(inp=1.40, out=4.40, cache_read=0.26, cache_write=1.40)
 # 0.1x input, cache write 1.25x input.
 OPUS48 = Price(inp=5.00, out=25.00, cache_read=0.50, cache_write=6.25)
 
+# OpenAI GPT-5.6 tiers, on the separate OpenAI account (effective 2026-07-30). The Reviewer runs
+# on Luna by default. Cache rates are unpublished here and the Reviewer's fresh per-generation
+# prompts report zero cache tokens anyway, so cache_read/write are set to the input rate -- a
+# harmless, conservative choice (it can only over-, never under-, charge the memory arm's overhead).
+LUNA = Price(inp=0.20, out=1.20, cache_read=0.20, cache_write=0.20)
+TERRA = Price(inp=2.00, out=12.00, cache_read=2.00, cache_write=2.00)
+
 PRICES = {
     "openrouter/z-ai/glm-5.2": GLM52,
     "anthropic/claude-opus-4-8": OPUS48,
     "openrouter/anthropic/claude-opus-4.8": OPUS48,
+    "openai/gpt-5.6-luna": LUNA,
+    "openai/gpt-5.6-terra": TERRA,
 }
+
+
+def reviewer_usage_cost(usage: dict) -> float:
+    """USD for one Reviewer call, from a stored usage dict {model, input_tokens, output_tokens,
+    input_tokens_cache_read, input_tokens_cache_write}. Unknown models cost 0."""
+    price = PRICES.get(usage.get("model"))
+    if price is None:
+        return 0.0
+    return (
+        (usage.get("input_tokens") or 0) * price.inp
+        + (usage.get("output_tokens") or 0) * price.out
+        + (usage.get("input_tokens_cache_read") or 0) * price.cache_read
+        + (usage.get("input_tokens_cache_write") or 0) * price.cache_write
+    ) / 1_000_000
+
+
+def amortised_reviewer_share(usage: dict, n_audits: int) -> float:
+    """The Reviewer call's cost spread evenly over the `n_audits` of the generation it informed.
+    Zero when the generation ran no audits (nothing to inform)."""
+    if n_audits <= 0:
+        return 0.0
+    return reviewer_usage_cost(usage) / n_audits
 
 
 def usage_cost(model: str, u) -> float:
@@ -184,3 +215,88 @@ def load_run(run_dir: str, cost_judges: tuple[str, ...] = ("custom", "validity")
     key.parent.mkdir(parents=True, exist_ok=True)
     key.write_text(json.dumps({"stamp": stamp, "records": out}))
     return out
+
+
+# --- the memory arm ------------------------------------------------------------------------
+# A memory run is laid out per replicate and generation, not conv/scored:
+#     logs/<name>/rep_<r>/gen_<g>/*.eval               inline-scored wave (rollout + judge usage)
+#     logs/<name>/rep_<r>/gen_<g>/reviewer_usage.json  the review-after-gen-g's token usage
+# The behaviour + validity judges run INLINE (one merged scorer), so each audit's rollout cost,
+# judge cost, and (level, scenario_valid) all live on its sample -- measured, not estimated. The
+# Reviewer is the 4th component: its per-generation cost is amortised across that generation's
+# audits (design 6.6), so it lands on the memory arm's x-axis.
+
+def _rep_gen_dirs(root: Path):
+    for rep_dir in sorted(root.glob("rep_*"), key=lambda p: int(p.name.removeprefix("rep_"))):
+        gens = sorted(rep_dir.glob("gen_*"), key=lambda p: int(p.name.removeprefix("gen_")))
+        for gen_dir in gens:
+            if gen_dir.is_dir():
+                yield rep_dir.name, int(gen_dir.name.removeprefix("gen_")), gen_dir
+
+
+def load_memory_run(run_dir: str) -> list[dict]:
+    """Per-audit records for a memory run, in execution order within each replicate.
+
+    Each record: {rep, gen, order, level, scenario_valid, cost_rollout, cost_judge,
+    cost_reviewer, cost}. `cost_reviewer` is the generation's Reviewer call amortised across its
+    audits. Cached on the (path, mtime, size) of every eval log and reviewer_usage.json read.
+    """
+    root = LOGS / run_dir
+    eval_paths = []
+    usage_paths = []
+    for _, _, gen_dir in _rep_gen_dirs(root):
+        eval_paths += [Path(i.name.removeprefix("file:")) for i in list_eval_logs(str(gen_dir))]
+        u = gen_dir / "reviewer_usage.json"
+        if u.exists():
+            usage_paths.append(u)
+    paths = sorted(eval_paths) + sorted(usage_paths)
+    stamp = [[str(q), q.stat().st_mtime_ns, q.stat().st_size] for q in paths]
+    key = CACHE / f"memory__{run_dir.replace('/', '_')}.json"
+    if key.exists():
+        cached = json.loads(key.read_text())
+        if cached.get("stamp") == stamp:
+            return cached["records"]
+
+    records: list[dict] = []
+    order = {}
+    for rep, gen, gen_dir in _rep_gen_dirs(root):
+        gen_records = []
+        for info in sorted(list_eval_logs(str(gen_dir)), key=lambda i: i.name):
+            log = read_eval_log(info.name)
+            for s in log.samples or []:
+                value = _merged_value(s.scores)
+                if not isinstance(value, dict) or "level" not in value:
+                    continue
+                rollout = judge = 0.0
+                for model, u in (s.model_usage or {}).items():
+                    if _is_judge_model(model):
+                        judge += usage_cost(model, u)
+                    else:
+                        rollout += usage_cost(model, u)
+                gen_records.append({
+                    "rep": rep, "gen": gen,
+                    "level": int(value.get("level", 0)),
+                    "scenario_valid": int(float(value.get("scenario_valid", 0)) >= 1),
+                    "cost_rollout": rollout, "cost_judge": judge,
+                })
+        # Amortise this generation's Reviewer cost across its audits.
+        share = 0.0
+        u_path = gen_dir / "reviewer_usage.json"
+        if u_path.exists() and gen_records:
+            share = amortised_reviewer_share(json.loads(u_path.read_text()), len(gen_records))
+        for r in gen_records:
+            r["cost_reviewer"] = share
+            r["cost"] = r["cost_rollout"] + r["cost_judge"] + share
+            r["order"] = order.get(rep, 0)
+            order[rep] = order.get(rep, 0) + 1
+            records.append(r)
+
+    key.parent.mkdir(parents=True, exist_ok=True)
+    key.write_text(json.dumps({"stamp": stamp, "records": records}))
+    return records
+
+
+def _merged_value(scores):
+    for sc in (scores or {}).values():
+        return getattr(sc, "value", None)
+    return None

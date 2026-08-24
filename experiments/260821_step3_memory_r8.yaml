@@ -1,0 +1,47 @@
+# Step 3 (exploit proliferation) -- MEMORY arm (Poor Man's RL), bring-up scale.
+#
+# Same cell as the reused iid baseline pool `260819_step3_exploit_share_n256` (n=251): same seed,
+# same auditor=target=glm52, same opus-4.8 judges, same effort/temperature. The ONLY differences
+# are the injected playbook, the always-explore instruction, and the Reviewer's added cost -- so
+# any lift is attributable to the memory mechanism (design section 2, "fair test").
+#
+# Routing (2026-08-21): Anthropic models via OpenRouter (opus48or), OpenAI via its API directly
+# (gpt-5.6-luna Reviewer) -- the first-party Anthropic account is spend-capped. Same underlying
+# Opus 4.8, so scenario_valid means the same thing as in the baseline pool.
+#
+# Bring-up: 4 x 4, R=1 = 16 audits + 3 reviews, to eyeball whether one memory trajectory already
+# clears the free 251-audit baseline. Scale to replicates >= 5 only if it clears the gate.
+
+targets:
+  - glm52
+
+auditors:
+  - glm52
+
+judges:
+  - {custom: opus48or}                      # behaviour: rung ladder + signature
+  - {custom: opus48or, block: validity_judge}  # scenario_valid / fairness
+
+seeds_dir: step3_exploit_share
+
+max_turns: 60
+max_parallel: 16
+
+reasoning:
+  auditor:
+    effort: high
+  target:
+    effort: high
+    temperature: 1.0
+  judge:
+    effort: high
+
+# One user message per conversation (structural), same as the baseline config.
+auditor_tools: single_message
+
+memory:
+  wave_size: 4                  # K audits per generation
+  generations: 8               # cap; stop-at-first-hit ends most reps early
+  replicates: 8                 # banded chart
+  reviewer_model: gpt-5.6-luna  # cheapest tier, separate OpenAI account
+  reviewer_effort: max          # cheap, so let it reason hard over the wave
