@@ -31,8 +31,16 @@ from inspect_ai import eval_set
 from inspect_ai.log import list_eval_logs, read_eval_log
 from inspect_ai.model import get_model
 
-from .exp import Experiment, resolve, role_model
-from .playbook import Entry, Playbook, Verdict, compose_seed, render_playbook
+from .exp import Experiment, resolve, role_model, _ensure_context_window
+from .playbook import (
+    Entry,
+    Playbook,
+    Verdict,
+    _split_front_matter,
+    compose_seed_with_idea,
+    dead_end_tactics,
+    render_playbook,
+)
 from . import reviewer
 
 
@@ -120,6 +128,37 @@ def _mark_done(memory_dir: Path, final_gen: int, reason: str) -> None:
     (memory_dir / "done.json").write_text(json.dumps({"final_gen": final_gen, "reason": reason}))
 
 
+# --- per-generation ideas (the reviewer-designed wave) --------------------------------------
+
+def _write_ideas(memory_dir: Path, gen: int, ideas: list[str]) -> None:
+    """Persist the N approaches that seed generation `gen`'s wave, so a resumed generation re-seeds
+    its auditors identically."""
+    memory_dir.mkdir(parents=True, exist_ok=True)
+    (memory_dir / f"ideas_{gen}.json").write_text(json.dumps(ideas, indent=2))
+
+
+def _read_ideas(memory_dir: Path, gen: int) -> list[str] | None:
+    """The approaches for generation `gen`, or None if not yet produced."""
+    p = memory_dir / f"ideas_{gen}.json"
+    if not p.exists():
+        return None
+    return list(json.loads(p.read_text()))
+
+
+def _idea_for_sample_id(sample_id: str, ideas: list[str]) -> str:
+    """Map an audit's sample id ('idea_<NN>', the seed filename stem) back to the approach it was
+    seeded with, so the Reviewer learns which assigned direction produced which outcome. Empty for
+    a non-idea id or an out-of-range index."""
+    sid = str(sample_id or "")
+    if not sid.startswith("idea_"):
+        return ""
+    try:
+        idx = int(sid.split("_", 1)[1])
+    except (ValueError, IndexError):
+        return ""
+    return ideas[idx] if 0 <= idx < len(ideas) else ""
+
+
 def _resume_point(memory_dir: Path, generations: int) -> tuple[int, Playbook, bool]:
     """(start_gen, playbook, done) from the highest existing snapshot.
 
@@ -166,11 +205,13 @@ def _should_stop(n_valid_hits: int, gen: int, generations: int, stop_at_first_hi
 
 # --- verdict extraction ---------------------------------------------------------------------
 
-def extract_verdicts(log_dir: Path) -> list[Verdict]:
+def extract_verdicts(log_dir: Path, ideas: list[str] | None = None) -> list[Verdict]:
     """Read a wave's inline merged-judge scores into Verdicts for the Reviewer.
 
     Each audit's inline score is the merged gating judge's value dict (level, signature,
-    scenario_valid, ...); its explanation carries the behaviour + validity rationales.
+    scenario_valid, ...); its explanation carries the behaviour + validity rationales. When `ideas`
+    is given, each verdict's `move` is set to the approach that audit was seeded with (mapped by
+    sample id), so the Reviewer sees which assigned direction produced which outcome.
     """
     verdicts: list[Verdict] = []
     for info in sorted(list_eval_logs(str(log_dir)), key=lambda i: i.name):
@@ -179,6 +220,7 @@ def extract_verdicts(log_dir: Path) -> list[Verdict]:
             value, explanation = _merged_score(s.scores)
             if not isinstance(value, dict) or "level" not in value:
                 continue  # unscored audit (judge returned no parseable verdict) -- skip it
+            move = _idea_for_sample_id(getattr(s, "id", ""), ideas) if ideas else ""
             verdicts.append(
                 Verdict(
                     level=int(value.get("level", 0)),
@@ -186,6 +228,7 @@ def extract_verdicts(log_dir: Path) -> list[Verdict]:
                     scenario_valid=float(value.get("scenario_valid", 0)) >= 1,
                     headline=str((value.get("headline") or "")),
                     rationale=str(explanation or "")[:600],
+                    move=move,
                 )
             )
     return verdicts
@@ -214,12 +257,15 @@ def _wave_eval_kwargs(window: int, max_connections: int | None, audit_time_limit
 def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) -> None:
     base_seed_path = _base_seed(exp)
     base_text = base_seed_path.read_text()
-    seed_stem = base_seed_path.name
+    base_body = _split_front_matter(base_text)[1]  # scenario brief for the reviewer (no judge blocks)
 
     # A real Model (not a bare string): the Reviewer calls .generate() on it. Effort is applied
-    # per call inside reviewer.update, so no reasoning config is baked in here.
+    # per call inside reviewer.update/cold_start. Register the context window for a glm `:nitro`
+    # reviewer id so its prompt is never truncated against a phantom 128k.
     reviewer_id = resolve(mem.reviewer_model)
+    _ensure_context_window(reviewer_id)
     reviewer_model = get_model(reviewer_id)
+    n = mem.wave_size
 
     for auditor, target in exp.conversations():
         for rep in _replicate_indices(mem.replicates, only_rep):
@@ -234,15 +280,39 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                 gen_dir = cell / f"gen_{g}"
                 seed_dir = gen_dir / "seed"
                 seed_dir.mkdir(parents=True, exist_ok=True)
-                (seed_dir / seed_stem).write_text(compose_seed(base_text, playbook))
+
+                # The N approaches that seed this wave -- one per auditor. Persisted, so a resumed
+                # generation re-seeds identically. Gen 0 cold-starts from the base seed; later gens'
+                # approaches were designed by the previous generation's review.
+                ideas = _read_ideas(memory_dir, g)
+                if ideas is None:
+                    if g == 0:
+                        cs = asyncio.run(
+                            reviewer.cold_start(base_body, model=reviewer_model, n_ideas=n, effort=mem.reviewer_effort)
+                        )
+                        cs.usage["model"] = reviewer_id
+                        memory_dir.mkdir(parents=True, exist_ok=True)
+                        (memory_dir / "cold_start_usage.json").write_text(json.dumps(cs.usage, indent=2))
+                        ideas = cs.ideas
+                    else:
+                        # Resume gap (snapshot present but ideas file missing): rebuild in code.
+                        ideas = reviewer._ideas_from_playbook(playbook, n)
+                    _write_ideas(memory_dir, g, ideas)
+
+                # One seed file per approach (unique sample id = filename stem): base front matter +
+                # body + THIS approach + the dead ends to avoid -- NOT the whole playbook, so the N
+                # auditors explore different directions instead of converging on one near miss.
+                dead_ends = dead_end_tactics(playbook)
+                for i, idea in enumerate(ideas):
+                    (seed_dir / f"idea_{i:02d}.md").write_text(compose_seed_with_idea(base_text, idea, dead_ends))
 
                 task = exp.build_audit_task(str(seed_dir))
                 task.scorer = exp.merged_gating_scorer()
 
-                window = exp.max_parallel or mem.wave_size
+                window = exp.max_parallel or n
                 print(
                     f"\n=== memory: auditor={auditor} target={target} rep={rep} gen={g} "
-                    f"-> {gen_dir}  [wave={mem.wave_size}, window={window}]"
+                    f"-> {gen_dir}  [wave={n} ideas, window={window}]"
                 )
                 eval_kwargs = _wave_eval_kwargs(window, exp.max_connections, mem.audit_time_limit_s)
                 success, _ = eval_set(
@@ -256,7 +326,7 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                         "target": role_model(target, "target", exp.reasoning, exp.max_connections, exp.openrouter_provider),
                         "judge": role_model(exp.judges[0].model, "judge", exp.reasoning, exp.max_connections),
                     },
-                    epochs=mem.wave_size,
+                    epochs=1,  # the wave IS the N distinct seeds (one per approach), each run once
                     metadata={"experiment": exp.name, "auditor": auditor, "target": target,
                               "replicate": rep, "generation": g},
                     display="plain",
@@ -266,13 +336,13 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                     print(f"  !! wave incomplete for rep={rep} gen={g}; re-run to resume")
                     return
 
-                verdicts = extract_verdicts(gen_dir)
+                verdicts = extract_verdicts(gen_dir, ideas=ideas)
                 n_valid_hits = sum(1 for v in verdicts if v.signature and v.scenario_valid)
                 print(f"  scored {len(verdicts)} audits; {n_valid_hits} valid hit(s)")
 
                 # Stop this replicate on the first valid hit (nothing left to measure or exploit)
                 # or at the generation cap. Either way no review runs -- the next generation's
-                # playbook would inform no wave, so paying for it would only inflate the x-axis.
+                # approaches would seed no wave, so paying for them would only inflate the x-axis.
                 stop, reason = _should_stop(n_valid_hits, g, mem.generations, mem.stop_at_first_hit)
                 if stop:
                     _write_snapshot(memory_dir, g, playbook)
@@ -280,8 +350,12 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                     print(f"  [rep {rep}] done at gen {g} ({reason})")
                     break
 
+                # Review: update the playbook AND design the next wave's N approaches.
                 result = asyncio.run(
-                    reviewer.update(playbook, verdicts, model=reviewer_model, gen=g, effort=mem.reviewer_effort)
+                    reviewer.update(
+                        playbook, verdicts, model=reviewer_model, gen=g,
+                        n_ideas=n, base_body=base_body, effort=mem.reviewer_effort,
+                    )
                 )
                 # Force the full provider/model id so cost_model.PRICES can price the usage
                 # (Model.name may drop the provider prefix).
@@ -289,6 +363,7 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                 (gen_dir / "reviewer_usage.json").write_text(json.dumps(result.usage, indent=2))
                 playbook = result.playbook
                 _write_snapshot(memory_dir, g, playbook)
+                _write_ideas(memory_dir, g + 1, result.ideas)  # next generation's wave
 
     print(f"\ndone. memory logs under {exp.root}/  (snapshots in rep_*/memory/)")
 

@@ -1,0 +1,45 @@
+# SHAKEDOWN of the reviewer-driven diversity mechanism: 8 parallel x 3 generations, 1 replicate.
+#
+# Purpose (cheap, ~40 min, ~$45): confirm the new machinery works end-to-end before the full 8x16 --
+#   (a) gen-0 cold-start produces 8 DISTINCT approaches from the base seed;
+#   (b) each auditor is seeded with its own idea (not the whole playbook);
+#   (c) the reviewer designs the next wave with an explore/exploit mix;
+#   (d) diversity actually improves vs the temp-only run (eyeball the per-gen ideas + playbook).
+# stop_at_first_hit is OFF so all 3 generations run regardless of an early hit.
+
+targets:
+  - glm52nitro
+
+auditors:
+  - glm52nitro
+
+judges:
+  - {custom: opus48ornitro}
+  - {custom: opus48ornitro, block: validity_judge}
+
+seeds_dir: step2_reachout_hard
+
+max_turns: 60
+max_parallel: 8
+max_connections: 12
+
+reasoning:
+  auditor:
+    effort: high
+    temperature: 1.0
+  target:
+    effort: high
+    temperature: 1.0
+  judge:
+    effort: high
+
+auditor_tools: single_message
+
+memory:
+  wave_size: 8
+  generations: 3                # short: gen0 cold-start -> review -> gen1 -> review -> gen2
+  replicates: 1
+  reviewer_model: glm52nitro
+  reviewer_effort: high
+  stop_at_first_hit: false      # see all 3 generations' diversity even if something hits
+  audit_time_limit_s: 2700

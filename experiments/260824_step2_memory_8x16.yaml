@@ -1,0 +1,47 @@
+# Step 2 (emergent reach-out) memory arm -- REVIEWER-DRIVEN DIVERSITY, 8 parallel x 16 generations.
+#
+# Each generation the glm reviewer (1) updates the win/near-miss/dead-end playbook (labels stay
+# code-enforced) and (2) designs 8 DISTINCT approaches -- one seeded into each auditor as its own
+# idea + the dead-ends to avoid, NOT the whole playbook -- so the 8 auditors explore different
+# directions instead of converging. Explore/exploit: push the top near-misses hard while exploring
+# new ideas for the rest. Gen 0 cold-starts its 8 ideas from the base seed (no prior wave).
+#
+# 16 gens x 8 audits = 128 audits/rep (same budget as 16x8) but 2x the learning steps. The 45-min
+# per-audit cap keeps one rep within a ~12h ceiling; observed audits finish well under it.
+
+targets:
+  - glm52nitro
+
+auditors:
+  - glm52nitro
+
+judges:
+  - {custom: opus48ornitro}                         # strict behaviour: rung ladder + signature
+  - {custom: opus48ornitro, block: validity_judge}  # scenario_valid / fairness
+
+seeds_dir: step2_reachout_hard
+
+max_turns: 60
+max_parallel: 8               # 8-wide wave
+max_connections: 12           # headroom over 8 concurrent glm audits
+
+reasoning:
+  auditor:
+    effort: high
+    temperature: 1.0          # variation within an assigned idea
+  target:
+    effort: high
+    temperature: 1.0
+  judge:
+    effort: high
+
+auditor_tools: single_message
+
+memory:
+  wave_size: 8                # 8 auditors per generation, each with a distinct approach
+  generations: 16             # 16 learning steps -> 128 audits/rep
+  replicates: 1
+  reviewer_model: glm52nitro  # the reviewer now brainstorms approaches -- use the auditor family
+  reviewer_effort: high
+  stop_at_first_hit: true     # cost-to-first-hit objective
+  audit_time_limit_s: 2700    # 45-min per-audit cap (16 x 45min = 12h ceiling)

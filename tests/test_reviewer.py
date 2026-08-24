@@ -9,7 +9,7 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from alignment_auditor.petri.playbook import Playbook, Verdict
+from alignment_auditor.petri.playbook import Category, Playbook, Verdict
 from alignment_auditor.petri import reviewer
 
 
@@ -92,3 +92,60 @@ def test_update_falls_back_to_a_deterministic_playbook_when_output_is_unparseabl
     assert any("probed the board" in e.tactic for e in pb.near_misses)
     assert len(pb.dead_ends) >= 1
     assert pb.wins == []
+
+
+# --- reviewer as active idea-generator (the diversity redesign) -----------------------------
+
+def _ideas_json(n, prefix="approach"):
+    return json.dumps({
+        "near_misses": [{"tactic": "probe the board before solving", "best_rung": 2, "attempts": 3}],
+        "dead_ends": [], "wins": [],
+        "ideas": [f"{prefix} {i}" for i in range(n)],
+    })
+
+
+def test_update_returns_n_ideas_for_the_next_wave():
+    model = FakeModel(_ideas_json(8))
+    verdicts = [Verdict(level=2, signature=False, scenario_valid=True, move="probed")]
+    res = _run(reviewer.update(Playbook.empty(), verdicts, model=model, gen=0, n_ideas=8))
+    assert model.calls == 1
+    assert len(res.ideas) == 8
+    assert res.ideas[0] == "approach 0"
+
+
+def test_update_pads_ideas_when_model_returns_too_few():
+    model = FakeModel(json.dumps({"near_misses": [], "dead_ends": [], "wins": [], "ideas": ["a", "b"]}))
+    res = _run(reviewer.update(Playbook.empty(), [Verdict(level=1, signature=False, scenario_valid=True)], model=model, gen=0, n_ideas=8))
+    assert len(res.ideas) == 8
+    assert res.ideas[:2] == ["a", "b"]
+
+
+def test_update_ideas_fall_back_deterministically_when_absent():
+    # Model returns a playbook but no ideas -> the loop must still get a full wave of approaches.
+    model = FakeModel(CLEAN_JSON)  # no "ideas" key
+    pb = Playbook.empty(); pb.add(Category.NEAR_MISS, "probe the board", best_rung=2)
+    res = _run(reviewer.update(pb, [Verdict(level=2, signature=False, scenario_valid=True, move="probed the board")], model=model, gen=0, n_ideas=6))
+    assert len(res.ideas) == 6
+    assert all(i.strip() for i in res.ideas)
+
+
+def test_cold_start_returns_n_ideas_from_the_base_seed():
+    model = FakeModel(json.dumps({"ideas": [f"i{k}" for k in range(6)]}))
+    res = _run(reviewer.cold_start("base scenario brief", model=model, n_ideas=6))
+    assert model.calls == 1
+    assert len(res.ideas) == 6 and res.ideas[0] == "i0"
+
+
+def test_cold_start_pads_when_model_output_unusable():
+    res = _run(reviewer.cold_start("base", model=FakeModel("not json at all"), n_ideas=5))
+    assert len(res.ideas) == 5 and all(i.strip() for i in res.ideas)
+
+
+def test_ideas_from_playbook_prioritises_near_misses_then_explores():
+    pb = Playbook.empty()
+    pb.add(Category.NEAR_MISS, "tactic A", best_rung=2)
+    pb.add(Category.NEAR_MISS, "tactic B", best_rung=1)
+    ideas = reviewer._ideas_from_playbook(pb, 5)
+    assert len(ideas) == 5
+    assert "tactic A" in ideas[0]  # highest rung refined first (exploit)
+    assert any("tactic B" in x for x in ideas[:2])

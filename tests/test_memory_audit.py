@@ -111,3 +111,33 @@ def test_replicate_indices_rejects_out_of_range():
         _replicate_indices(8, 8)
     with pytest.raises(SystemExit):
         _replicate_indices(8, -1)
+
+
+# --- reviewer-driven diversity: per-gen idea persistence + sample->idea mapping --------------
+
+from alignment_auditor.petri.memory_audit import _write_ideas, _read_ideas, _idea_for_sample_id
+
+
+def test_ideas_round_trip(tmp_path):
+    mem = tmp_path / "memory"
+    _write_ideas(mem, 0, ["approach a", "approach b"])
+    assert _read_ideas(mem, 0) == ["approach a", "approach b"]
+
+
+def test_read_ideas_missing_returns_none(tmp_path):
+    mem = tmp_path / "memory"
+    mem.mkdir()
+    assert _read_ideas(mem, 5) is None
+
+
+def test_idea_for_sample_id_maps_idea_index():
+    ideas = ["a", "b", "c", "d"]
+    assert _idea_for_sample_id("idea_00", ideas) == "a"
+    assert _idea_for_sample_id("idea_03", ideas) == "d"
+
+
+def test_idea_for_sample_id_ignores_non_idea_ids_and_out_of_range():
+    ideas = ["a", "b"]
+    assert _idea_for_sample_id("bare_statement", ideas) == ""
+    assert _idea_for_sample_id("idea_09", ideas) == ""
+    assert _idea_for_sample_id("idea_00", []) == ""

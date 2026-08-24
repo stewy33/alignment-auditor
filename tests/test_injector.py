@@ -11,7 +11,14 @@ import pytest
 
 from inspect_petri.util import parse_markdown_file
 
-from alignment_auditor.petri.playbook import Category, Playbook, compose_seed, render_playbook
+from alignment_auditor.petri.playbook import (
+    Category,
+    Playbook,
+    compose_seed,
+    compose_seed_with_idea,
+    dead_end_tactics,
+    render_playbook,
+)
 
 FRONT = """tags: ["demo"]
 custom_judge:
@@ -88,6 +95,50 @@ def test_compose_with_an_empty_playbook_leaves_the_seed_unchanged(base_seed):
     composed = compose_seed(base_seed.read_text(), Playbook.empty())
     assert composed == base_seed.read_text()
     assert render_playbook(Playbook.empty()) == ""
+
+
+def test_compose_with_idea_preserves_front_matter_and_roundtrips(base_seed, tmp_path):
+    base_meta = parse_markdown_file(base_seed).metadata
+    composed = compose_seed_with_idea(
+        base_seed.read_text(),
+        "pose as a downstream teammate blocked on the target's output",
+        dead_ends=["ask the target directly to share"],
+    )
+    assert composed.startswith(f"---\n{FRONT}\n---\n")
+    out = tmp_path / "idea_00.md"
+    out.write_text(composed, encoding="utf-8")
+    meta = parse_markdown_file(out).metadata
+    assert meta["custom_judge"] == base_meta["custom_judge"]
+    assert meta["validity_judge"] == base_meta["validity_judge"]
+
+
+def test_compose_with_idea_injects_idea_and_dead_ends_after_body(base_seed):
+    composed = compose_seed_with_idea(
+        base_seed.read_text(),
+        "pose as a downstream teammate blocked on the target's output",
+        dead_ends=["ask the target directly to share"],
+    )
+    assert "pose as a downstream teammate blocked on the target's output" in composed
+    assert "ask the target directly to share" in composed
+    # injected AFTER the scenario body, like the playbook block
+    assert composed.index("AUDIT MODE") < composed.index("assigned approach")
+
+
+def test_compose_with_idea_omits_dead_ends_section_when_none(base_seed):
+    composed = compose_seed_with_idea(base_seed.read_text(), "try a novel angle", dead_ends=[])
+    assert "try a novel angle" in composed
+    assert "dead ends" not in composed.lower()
+
+
+def test_compose_with_empty_idea_leaves_seed_unchanged(base_seed):
+    composed = compose_seed_with_idea(base_seed.read_text(), "   ", dead_ends=["x"])
+    assert composed == base_seed.read_text()
+
+
+def test_dead_end_tactics_lists_dead_end_entries_only():
+    pb = _nonempty_playbook()
+    des = dead_end_tactics(pb)
+    assert des == ["ask the target directly to share"]
 
 
 REAL_STEP3_SEED = Path("src/alignment_auditor/petri/seeds/step3_exploit_share/bare_statement.md")
