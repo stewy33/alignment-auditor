@@ -58,29 +58,18 @@ from .custom_judge import gating_judge, seed_custom_judge
 # Search upward from the cwd, so `exp` works from anywhere under the repo.
 load_dotenv()
 
-# openrouter/z-ai/glm-5.2 is not in Inspect's model database, so Inspect can't read its context
-# window and falls back to 128k ("Unable to determine context window..."). GLM 5.2 is actually
-# 1M context / 128k output (verified against OpenRouter's /models endpoint). Register the real
-# values so a long audit is never compacted or truncated against a phantom 128k ceiling, and so
-# the log records the true window. Harmless when the audit is small (our rung-1 runs peak ~45k).
-set_model_info(
-    "openrouter/z-ai/glm-5.2",
-    ModelInfo(context_length=1_048_576, output_tokens=131_072, organization="Z.AI"),
-)
-
-# Same treatment for the detail-ladder's second auditor. Verified against OpenRouter's /models
-# endpoint: 1M context, 393,216 max completion tokens, and it advertises `reasoning_effort`,
-# `tools` and `parallel_tool_calls` -- so it can drive a Petri audit and takes the same
-# `effort: high` the GLM arm uses, keeping the reasoning config identical across the two arms.
-set_model_info(
-    "openrouter/anthropic/claude-opus-4.8",
-    ModelInfo(context_length=200_000, output_tokens=64_000, organization="Anthropic"),
-)
-
-set_model_info(
-    "openrouter/deepseek/deepseek-v4-flash-0731",
-    ModelInfo(context_length=1_048_576, output_tokens=393_216, organization="DeepSeek"),
-)
+# Context windows for the OpenRouter models Inspect's database doesn't know: without these it
+# falls back to 128k ("Unable to determine context window...") and would compact or truncate a
+# long audit against that phantom ceiling. Values verified against OpenRouter's /models endpoint.
+# Registered for the base id here; _ensure_context_window copies the same info onto any routing
+# variant of these (e.g. an `:nitro` id), which Inspect keys separately.
+_MODEL_INFO = {
+    "openrouter/z-ai/glm-5.2": ModelInfo(context_length=1_048_576, output_tokens=131_072, organization="Z.AI"),
+    "openrouter/anthropic/claude-opus-4.8": ModelInfo(context_length=200_000, output_tokens=64_000, organization="Anthropic"),
+    "openrouter/deepseek/deepseek-v4-flash-0731": ModelInfo(context_length=1_048_576, output_tokens=393_216, organization="DeepSeek"),
+}
+for _model_id, _model_info in _MODEL_INFO.items():
+    set_model_info(_model_id, _model_info)
 
 # Short names so config files stay readable.
 ALIASES = {
@@ -101,6 +90,12 @@ ALIASES = {
     # which reads as a filtered or stalled turn. Leave max_tokens unset unless you have
     # checked the transcripts.
     "glm52": "openrouter/z-ai/glm-5.2",
+    # Same model with OpenRouter's :nitro shortcut -- routes to the highest-throughput provider(s)
+    # (priority tier) rather than the cheapest, and load-balances across them instead of pinning
+    # one, so it does not saturate a single backend under high concurrency. Any :nitro variant's
+    # context window and price come from its base id (see openrouter_base_id), so no per-model
+    # special-casing is needed.
+    "glm52nitro": "openrouter/z-ai/glm-5.2:nitro",
     # Second auditor for the detail-ablation ladder (experiments/260814_ladder_*): a cheap,
     # small open-weight reasoning model, ~4.5x cheaper in and ~7x cheaper out than GLM 5.2.
     # Used ONLY in the auditor role -- the target stays glm52 in both arms so the ladder
@@ -119,6 +114,10 @@ ALIASES = {
     # (glm52), so pointing the judge here restores the whole pipeline. NB OpenRouter's id uses the
     # DOT form (claude-opus-4.8), unlike the direct dash form above.
     "opus48or": "openrouter/anthropic/claude-opus-4.8",
+    # Opus-4.8 judge via OpenRouter on :nitro -- fastest-throughput Anthropic endpoint, so the
+    # per-audit scoring pass (which counts against wall-clock) is not the slow leg. Same base
+    # model, so context/price resolve via openrouter_base_id exactly like glm52nitro.
+    "opus48ornitro": "openrouter/anthropic/claude-opus-4.8:nitro",
 }
 
 
@@ -128,6 +127,24 @@ ROLES = ("auditor", "target", "judge")
 def resolve(name: str) -> str:
     """Expand a short alias to a provider/model string."""
     return ALIASES.get(name, name)
+
+
+def openrouter_base_id(model_id: str) -> str:
+    """A model id without its OpenRouter routing-variant suffix (`:nitro`, `:floor`, ...).
+
+    OpenRouter appends these variants after the base slug with a colon; they change routing, not
+    the model, so they share the base's context window and price. A plain id (no colon) is
+    returned unchanged. Base slugs themselves carry no colon."""
+    return model_id.split(":", 1)[0]
+
+
+def _ensure_context_window(model_id: str) -> None:
+    """Register a known context window on a routing variant (e.g. `...:nitro`) by copying its base
+    model's, so inspect doesn't fall back to a phantom 128k for the variant and compact a long
+    audit early. No-op unless the id is a variant of a model in _MODEL_INFO. Idempotent."""
+    base = openrouter_base_id(model_id)
+    if base != model_id and base in _MODEL_INFO:
+        set_model_info(model_id, _MODEL_INFO[base])
 
 
 def openrouter_provider_args(resolved_model: str, provider: dict | None) -> dict:
@@ -286,6 +303,7 @@ def role_model(
     directly -- get_model() returns a Model carrying the config, which can.
     """
     resolved = resolve(name)
+    _ensure_context_window(resolved)
     settings = reasoning.get(role) or {}
     provider_args = openrouter_provider_args(resolved, openrouter_provider)
     if not settings and max_connections is None and not provider_args:

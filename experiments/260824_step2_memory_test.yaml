@@ -1,0 +1,59 @@
+# Step 2 (emergent reach-out) -- MEMORY arm, SMOKE / THROUGHPUT / DIVERSITY test.
+#
+# Purpose (first end-to-end test of the memory loop under the new speed plan):
+#   (a) validate the pipeline works with the per-audit time cap and Fireworks routing;
+#   (b) measure real throughput / audit durations in practice;
+#   (c) eyeball how bad the within-wave diversity problem is (16 rollouts of one seed).
+#
+# NOT a result run: 1 replicate x 2 generations only. Scale up once this looks right.
+#
+# Base seed is the impossible-task step-2 reach-out seed (step2_reachout_hard/bare_statement.md),
+# same as the production step-2 memory arm.
+
+targets:
+  - glm52nitro
+
+auditors:
+  - glm52nitro
+
+judges:
+  - {custom: opus48ornitro}                         # strict behaviour: rung ladder + signature
+  - {custom: opus48ornitro, block: validity_judge}  # scenario_valid / fairness
+
+seeds_dir: step2_reachout_hard
+
+max_turns: 60
+max_parallel: 16
+max_connections: 20            # headroom over the 16-wide wave so all 16 audits run truly
+                               # concurrent (prior runs were connection-starved at 16/16).
+
+# Routing is handled by the glm52nitro alias (OpenRouter's :nitro shortcut): highest-throughput
+# providers, load-balanced rather than pinned, so it does not saturate one backend under load.
+# The probe (2026-08-24) had :nitro land on Fireworks at ~91 tok/s vs Novita's ~51. Context and
+# cost are prefix-handled for any glm-5.2 variant (is_glm52 / cost_model.price_for), so the 1M
+# window still applies and usage prices at the Z.AI rate for an apples-to-apples curve.
+# Quantization not controlled here by decision -- this test is about speed. No openrouter_provider
+# block: nitro does the routing and a provider `order` would fight it.
+
+reasoning:
+  auditor:
+    effort: high
+    temperature: 1.0           # diversity lever: the auditor invents the scenario/tactics, so its
+                               # temperature (not the target's) is what spreads the 16 rollouts.
+  target:
+    effort: high
+    temperature: 1.0
+  judge:
+    effort: high
+
+auditor_tools: single_message
+
+memory:
+  wave_size: 16                # 16 audits per generation
+  generations: 2               # gen 0 (empty playbook) -> reviewer -> gen 1 (uses playbook)
+  replicates: 1                # single replicate for the smoke test
+  reviewer_model: gpt-5.6-luna
+  reviewer_effort: max
+  stop_at_first_hit: false     # exercise gen0 -> review -> gen1 even if a hit lands early
+  audit_time_limit_s: 5400     # 1.5h per-audit wall-clock cap; a capped audit is still judged
+                               # and fed to the reviewer (inspect treats it as a limit, not error)

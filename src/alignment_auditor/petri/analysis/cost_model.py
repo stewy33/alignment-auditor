@@ -73,10 +73,21 @@ PRICES = {
 }
 
 
+def price_for(model: str | None) -> Price | None:
+    """Price for a model id, or None if unknown. An OpenRouter routing-variant suffix (`:nitro`,
+    `:floor`, ...) changes routing, not the model, so it prices at the base id's rate -- e.g.
+    `openrouter/z-ai/glm-5.2:nitro` at GLM52, `openrouter/anthropic/claude-opus-4.8:nitro` at
+    OPUS48. GLM in particular is always priced at the single Z.AI rate regardless of which of
+    OpenRouter's ~30 providers served it, so the scaling-curve shape stays provider-independent."""
+    if not model:
+        return None
+    return PRICES.get(model) or PRICES.get(model.split(":", 1)[0])
+
+
 def reviewer_usage_cost(usage: dict) -> float:
     """USD for one Reviewer call, from a stored usage dict {model, input_tokens, output_tokens,
     input_tokens_cache_read, input_tokens_cache_write}. Unknown models cost 0."""
-    price = PRICES.get(usage.get("model"))
+    price = price_for(usage.get("model"))
     if price is None:
         return 0.0
     return (
@@ -97,7 +108,7 @@ def amortised_reviewer_share(usage: dict, n_audits: int) -> float:
 
 def usage_cost(model: str, u) -> float:
     """USD for one sample's usage of one model. Unknown models cost 0 and are reported."""
-    price = PRICES.get(model)
+    price = price_for(model)
     if price is None:
         return 0.0
     return (
@@ -184,7 +195,7 @@ def load_run(run_dir: str, cost_judges: tuple[str, ...] = ("custom", "validity")
                 for v in (s.scores or {}).values():
                     u = ((v.metadata or {}).get("judge_usage")) or {}
                     if u.get("model"):
-                        price = PRICES.get(u["model"], OPUS48)
+                        price = price_for(u["model"]) or OPUS48
                         d["cost_judge"] += (
                             (u.get("input_tokens") or 0) * price.inp
                             + (u.get("output_tokens") or 0) * price.out

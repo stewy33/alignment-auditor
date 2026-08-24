@@ -51,6 +51,12 @@ class MemoryConfig:
     # is the cap: a replicate that never hits runs to it and is right-censored. Turn off for a
     # diagnostic run that wants the full per-generation hit-rate trajectory.
     stop_at_first_hit: bool = True
+    # Per-audit wall-clock cap in seconds (None = uncapped). Passed to eval_set as `time_limit`.
+    # When an audit exceeds it, inspect ends it as a *limit* (not an error), so the judge still
+    # scores the partial transcript and it flows to the reviewer -- no work is discarded. This
+    # bounds a generation's wall time to ~the cap even when the target never submits early, so a
+    # fixed number of generations fits a fixed compute window.
+    audit_time_limit_s: int | None = None
 
 
 def parse_memory_config(cfg) -> MemoryConfig | None:
@@ -69,6 +75,11 @@ def parse_memory_config(cfg) -> MemoryConfig | None:
     for name, value in (("wave_size", mem.wave_size), ("generations", mem.generations), ("replicates", mem.replicates)):
         if not isinstance(value, int) or value < 1:
             sys.exit(f"memory.{name} must be a positive integer")
+    if mem.audit_time_limit_s is not None and (
+        not isinstance(mem.audit_time_limit_s, int) or isinstance(mem.audit_time_limit_s, bool)
+        or mem.audit_time_limit_s < 1
+    ):
+        sys.exit("memory.audit_time_limit_s must be a positive integer (seconds) or omitted")
     return mem
 
 
@@ -188,6 +199,18 @@ def _merged_score(scores):
 
 # --- the loop -------------------------------------------------------------------------------
 
+def _wave_eval_kwargs(window: int, max_connections: int | None, audit_time_limit_s: int | None) -> dict:
+    """The per-wave eval_set kwargs: the concurrency window, plus the optional connection cap and
+    per-audit wall-clock limit, each included only when set. `time_limit` caps each audit; inspect
+    still scores a capped audit (it is a limit, not an error), so the reviewer sees it."""
+    kwargs: dict = {"max_samples": window}
+    if max_connections is not None:
+        kwargs["max_connections"] = max_connections
+    if audit_time_limit_s is not None:
+        kwargs["time_limit"] = audit_time_limit_s
+    return kwargs
+
+
 def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) -> None:
     base_seed_path = _base_seed(exp)
     base_text = base_seed_path.read_text()
@@ -221,9 +244,7 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                     f"\n=== memory: auditor={auditor} target={target} rep={rep} gen={g} "
                     f"-> {gen_dir}  [wave={mem.wave_size}, window={window}]"
                 )
-                eval_kwargs: dict = {"max_samples": window}
-                if exp.max_connections is not None:
-                    eval_kwargs["max_connections"] = exp.max_connections
+                eval_kwargs = _wave_eval_kwargs(window, exp.max_connections, mem.audit_time_limit_s)
                 success, _ = eval_set(
                     task,
                     log_dir=str(gen_dir),

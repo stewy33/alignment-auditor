@@ -8,6 +8,30 @@ memory arm's x-axis and the arm pays its own overhead.
 from alignment_auditor.petri.analysis import cost_model
 
 
+def test_nitro_variants_price_at_their_base_rate():
+    # Any OpenRouter :nitro variant prices at its base model's rate -- generalises past glm.
+    assert cost_model.price_for("openrouter/z-ai/glm-5.2:nitro") is cost_model.GLM52
+    assert cost_model.price_for("openrouter/anthropic/claude-opus-4.8:nitro") is cost_model.OPUS48
+    assert cost_model.price_for("openrouter/z-ai/glm-5.2") is cost_model.GLM52
+
+
+def test_price_for_non_glm_models_unchanged():
+    assert cost_model.price_for("openai/gpt-5.6-luna") is cost_model.LUNA
+    assert cost_model.price_for("nonexistent/model") is None
+
+
+def test_usage_cost_identical_for_glm_base_and_nitro():
+    class U:
+        input_tokens = 1_000_000
+        output_tokens = 1_000_000
+        input_tokens_cache_read = 0
+        input_tokens_cache_write = 0
+
+    base = cost_model.usage_cost("openrouter/z-ai/glm-5.2", U())
+    nitro = cost_model.usage_cost("openrouter/z-ai/glm-5.2:nitro", U())
+    assert base == nitro > 0
+
+
 def test_luna_and_terra_are_priced():
     assert "openai/gpt-5.6-luna" in cost_model.PRICES
     assert "openai/gpt-5.6-terra" in cost_model.PRICES

@@ -3,7 +3,18 @@ only, so glm-5.2 can be pinned to a fast/consistent provider without collapsing 
 """
 
 import pytest
-from alignment_auditor.petri.exp import Experiment, openrouter_provider_args
+from alignment_auditor.petri.exp import Experiment, openrouter_provider_args, openrouter_base_id
+
+
+def test_openrouter_base_id_strips_routing_variant():
+    assert openrouter_base_id("openrouter/z-ai/glm-5.2:nitro") == "openrouter/z-ai/glm-5.2"
+    assert openrouter_base_id("openrouter/anthropic/claude-opus-4.8:nitro") == "openrouter/anthropic/claude-opus-4.8"
+
+
+def test_openrouter_base_id_leaves_plain_ids_untouched():
+    assert openrouter_base_id("openrouter/z-ai/glm-5.2") == "openrouter/z-ai/glm-5.2"
+    assert openrouter_base_id("anthropic/claude-opus-4-8") == "anthropic/claude-opus-4-8"
+    assert openrouter_base_id("") == ""
 
 
 def _cfg(**extra):

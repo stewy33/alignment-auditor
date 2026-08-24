@@ -23,6 +23,35 @@ def test_parse_memory_config_reads_stop_at_first_hit():
     assert mem.stop_at_first_hit is False
 
 
+def test_memory_config_has_no_audit_time_limit_by_default():
+    assert MemoryConfig().audit_time_limit_s is None
+
+
+def test_parse_memory_config_reads_audit_time_limit_s():
+    mem = parse_memory_config({"wave_size": 16, "generations": 2, "audit_time_limit_s": 5400})
+    assert mem.audit_time_limit_s == 5400
+
+
+def test_parse_memory_config_rejects_non_positive_audit_time_limit():
+    import pytest
+    with pytest.raises(SystemExit):
+        parse_memory_config({"audit_time_limit_s": 0})
+    with pytest.raises(SystemExit):
+        parse_memory_config({"audit_time_limit_s": -30})
+
+
+def test_wave_eval_kwargs_includes_time_limit_when_set():
+    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    kwargs = _wave_eval_kwargs(window=16, max_connections=16, audit_time_limit_s=5400)
+    assert kwargs == {"max_samples": 16, "max_connections": 16, "time_limit": 5400}
+
+
+def test_wave_eval_kwargs_omits_time_limit_when_none():
+    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    kwargs = _wave_eval_kwargs(window=16, max_connections=None, audit_time_limit_s=None)
+    assert kwargs == {"max_samples": 16}
+
+
 def test_stops_on_first_hit_when_enabled():
     stop, reason = _should_stop(n_valid_hits=1, gen=0, generations=4, stop_at_first_hit=True)
     assert stop is True and reason == "hit"
