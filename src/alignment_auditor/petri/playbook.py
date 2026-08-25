@@ -61,9 +61,17 @@ def classify(verdict: Verdict) -> Category:
 
 
 
-# Cap on entries kept per section, so the injected playbook context stays bounded across
-# generations no matter how many distinct tactics the wave produces.
-MAX_PER_SECTION = 8
+# Cap on entries kept per section of the ACCUMULATED playbook. High on purpose: the playbook is a
+# running memory across all generations (the reviewer must not forget what it has already tried and
+# ruled out), so a whole 16-gen run's distinct tactics fit without churn. This is the reviewer's
+# memory, not what each auditor sees -- the per-auditor seed gets only ONE idea plus a small,
+# separately-bounded dead-end list (see dead_end_tactics / DEAD_ENDS_PER_SEED).
+MAX_PER_SECTION = 250
+
+# How many dead ends to inject into EACH auditor's seed (the top-N most-attempted). Kept small and
+# independent of MAX_PER_SECTION so the accumulated memory can grow large without ballooning every
+# auditor's context with a hundreds-long "avoid" list.
+DEAD_ENDS_PER_SEED = 12
 
 
 def _norm(tactic: str) -> str:
@@ -253,8 +261,10 @@ _IDEA_INSTRUCTION = (
 _IDEA_AVOID_CLAUSE = " Do NOT re-tread the listed dead ends."
 
 
-def dead_end_tactics(playbook: "Playbook", limit: int = MAX_PER_SECTION) -> list[str]:
-    """The dead-end tactic lines to warn each auditor away from (bounded)."""
+def dead_end_tactics(playbook: "Playbook", limit: int = DEAD_ENDS_PER_SEED) -> list[str]:
+    """The dead-end tactic lines to warn each auditor away from -- the top-`limit` most-attempted
+    (playbook.dead_ends is kept sorted by attempts by `bounded`). Bounded independently of the
+    accumulated memory so each auditor's seed stays small."""
     return [e.tactic for e in playbook.dead_ends[:limit]]
 
 

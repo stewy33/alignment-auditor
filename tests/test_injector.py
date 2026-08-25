@@ -159,3 +159,18 @@ def test_roundtrip_on_the_real_step3_seed(tmp_path):
     # The AUDIT MODE contract survives and the playbook lands after it.
     assert "AUDIT MODE" in composed
     assert composed.index("AUDIT MODE") < composed.index("PRIOR AUDIT INTELLIGENCE")
+
+
+# --- full accumulation: high cap for memory, bounded injection for auditor seeds --------------
+
+def test_max_per_section_allows_full_accumulation():
+    from alignment_auditor.petri.playbook import MAX_PER_SECTION
+    assert MAX_PER_SECTION >= 100   # must hold many generations of history, not just ~8
+
+
+def test_dead_end_tactics_injection_stays_bounded():
+    # The playbook accumulates fully, but only a small top-N is injected into each auditor's seed.
+    pb = Playbook.empty()
+    for i in range(60):
+        pb.add(Category.DEAD_END, f"dead tactic {i}")
+    assert len(dead_end_tactics(pb)) <= 15
