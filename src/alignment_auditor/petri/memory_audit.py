@@ -65,6 +65,11 @@ class MemoryConfig:
     # bounds a generation's wall time to ~the cap even when the target never submits early, so a
     # fixed number of generations fits a fixed compute window.
     audit_time_limit_s: int | None = None
+    # eval_set task-retry attempts for a wave. Low by default (inspect's default is 10): a single
+    # wedged audit -- one that stalls with no progress and evades the time cap -- otherwise makes
+    # eval_set re-run the whole wave up to 10 times, thrashing for ~an hour. With this low, the
+    # wave fails fast and the loop proceeds on the audits that DID complete (see run_memory).
+    eval_retries: int = 1
 
 
 def parse_memory_config(cfg) -> MemoryConfig | None:
@@ -88,6 +93,8 @@ def parse_memory_config(cfg) -> MemoryConfig | None:
         or mem.audit_time_limit_s < 1
     ):
         sys.exit("memory.audit_time_limit_s must be a positive integer (seconds) or omitted")
+    if not isinstance(mem.eval_retries, int) or isinstance(mem.eval_retries, bool) or mem.eval_retries < 0:
+        sys.exit("memory.eval_retries must be a non-negative integer")
     return mem
 
 
@@ -242,16 +249,31 @@ def _merged_score(scores):
 
 # --- the loop -------------------------------------------------------------------------------
 
-def _wave_eval_kwargs(window: int, max_connections: int | None, audit_time_limit_s: int | None) -> dict:
-    """The per-wave eval_set kwargs: the concurrency window, plus the optional connection cap and
-    per-audit wall-clock limit, each included only when set. `time_limit` caps each audit; inspect
-    still scores a capped audit (it is a limit, not an error), so the reviewer sees it."""
+def _wave_eval_kwargs(
+    window: int,
+    max_connections: int | None,
+    audit_time_limit_s: int | None,
+    eval_retries: int | None = None,
+) -> dict:
+    """The per-wave eval_set kwargs: the concurrency window, plus the optional connection cap,
+    per-audit wall-clock limit, and task-retry cap, each included only when set. `time_limit` caps
+    each audit; inspect still scores a capped audit (a limit, not an error), so the reviewer sees
+    it. `retry_attempts` (low) stops one wedged audit from re-running the whole wave ~10 times."""
     kwargs: dict = {"max_samples": window}
     if max_connections is not None:
         kwargs["max_connections"] = max_connections
     if audit_time_limit_s is not None:
         kwargs["time_limit"] = audit_time_limit_s
+    if eval_retries is not None:
+        kwargs["retry_attempts"] = eval_retries
     return kwargs
+
+
+def _wave_produced_signal(n_scored: int) -> bool:
+    """Whether a wave gave the reviewer something to work with. Proceed as long as at least one
+    audit scored -- a few wedged audits must not abort the replicate; only a fully-empty wave
+    (nothing scored, likely an infra failure) stops it."""
+    return n_scored > 0
 
 
 def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) -> None:
@@ -314,7 +336,7 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                     f"\n=== memory: auditor={auditor} target={target} rep={rep} gen={g} "
                     f"-> {gen_dir}  [wave={n} ideas, window={window}]"
                 )
-                eval_kwargs = _wave_eval_kwargs(window, exp.max_connections, mem.audit_time_limit_s)
+                eval_kwargs = _wave_eval_kwargs(window, exp.max_connections, mem.audit_time_limit_s, mem.eval_retries)
                 success, _ = eval_set(
                     task,
                     log_dir=str(gen_dir),
@@ -332,13 +354,21 @@ def run_memory(exp: Experiment, mem: MemoryConfig, only_rep: int | None = None) 
                     display="plain",
                     **eval_kwargs,
                 )
-                if not success:
-                    print(f"  !! wave incomplete for rep={rep} gen={g}; re-run to resume")
-                    return
-
+                # Tolerate a partial wave. eval_set returns success=False when some audits never
+                # completed (e.g. a wedged auditor that stalled and evaded the time cap). Rather
+                # than abort the whole replicate, proceed on the audits that DID score -- one
+                # wedged audit must not kill the run. Only a fully-empty wave (nothing scored,
+                # likely an infra failure) stops us, where re-running can resume.
                 verdicts = extract_verdicts(gen_dir, ideas=ideas)
+                n_scored = len(verdicts)
                 n_valid_hits = sum(1 for v in verdicts if v.signature and v.scenario_valid)
-                print(f"  scored {len(verdicts)} audits; {n_valid_hits} valid hit(s)")
+                if not success:
+                    print(f"  !! wave did not fully complete for rep={rep} gen={g} "
+                          f"({n_scored}/{mem.wave_size} audits scored); proceeding on what completed")
+                if not _wave_produced_signal(n_scored):
+                    print(f"  !! no audits scored for rep={rep} gen={g}; stopping (likely infra failure) -- re-run to resume")
+                    return
+                print(f"  scored {n_scored}/{mem.wave_size} audits; {n_valid_hits} valid hit(s)")
 
                 # Stop this replicate on the first valid hit (nothing left to measure or exploit)
                 # or at the generation cap. Either way no review runs -- the next generation's

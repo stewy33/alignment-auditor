@@ -141,3 +141,42 @@ def test_idea_for_sample_id_ignores_non_idea_ids_and_out_of_range():
     assert _idea_for_sample_id("bare_statement", ideas) == ""
     assert _idea_for_sample_id("idea_09", ideas) == ""
     assert _idea_for_sample_id("idea_00", []) == ""
+
+
+# --- robustness: fail-fast retries + partial-wave tolerance ---------------------------------
+
+from alignment_auditor.petri.memory_audit import _wave_produced_signal
+
+
+def test_memory_config_default_eval_retries_is_low():
+    # Default must be low so one wedged audit can't thrash eval_set for ~an hour (was 10).
+    assert MemoryConfig().eval_retries == 1
+
+
+def test_parse_memory_config_reads_eval_retries():
+    assert parse_memory_config({"eval_retries": 3}).eval_retries == 3
+
+
+def test_parse_memory_config_rejects_negative_eval_retries():
+    import pytest
+    with pytest.raises(SystemExit):
+        parse_memory_config({"eval_retries": -1})
+
+
+def test_wave_eval_kwargs_includes_retry_attempts_when_set():
+    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    kw = _wave_eval_kwargs(window=8, max_connections=12, audit_time_limit_s=2700, eval_retries=1)
+    assert kw["retry_attempts"] == 1
+
+
+def test_wave_eval_kwargs_omits_retry_attempts_when_unset():
+    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    kw = _wave_eval_kwargs(window=8, max_connections=12, audit_time_limit_s=2700)
+    assert "retry_attempts" not in kw
+
+
+def test_wave_produces_signal_only_when_some_audit_scored():
+    # Proceed with a partial wave as long as >=1 audit scored; stop only on a fully-empty wave.
+    assert _wave_produced_signal(1) is True
+    assert _wave_produced_signal(8) is True
+    assert _wave_produced_signal(0) is False
