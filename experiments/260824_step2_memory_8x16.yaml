@@ -40,7 +40,7 @@ auditor_tools: single_message
 memory:
   wave_size: 8                # 8 auditors per generation, each with a distinct approach
   generations: 16             # 16 learning steps -> 128 audits/rep
-  replicates: 1
+  replicates: 5               # banded cost-to-first-hit CDF; launched as 5 parallel --only-rep procs
   reviewer_model: glm52nitro  # the reviewer now brainstorms approaches -- use the auditor family
   reviewer_effort: high
   stop_at_first_hit: true     # cost-to-first-hit objective
