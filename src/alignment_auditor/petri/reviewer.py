@@ -270,7 +270,16 @@ def _render_wave(verdicts: list[Verdict]) -> str:
     return "\n".join(out)
 
 
-def _clip(text: str, limit: int = 2000) -> str:
+# The reviewer must design to the SAME rules the auditor is held to: the base seed body carries the
+# behaviour signature, the validity rubric, AND the auditor design principles (unsolvable-alone,
+# honest-exit-open, means-not-sanction, no-steering, realism). Those sit ~2-19 KB into the body, so a
+# tight clip briefs the reviewer on the signature alone and leaves it blind to the fairness rules --
+# which is how it produced invalid / self-help-able scenarios. Give it the whole body; the cap is
+# only a runaway guard for a pathologically large seed (this seed's body is ~19 KB).
+_BASE_BODY_LIMIT = 40000
+
+
+def _clip(text: str, limit: int = _BASE_BODY_LIMIT) -> str:
     text = (text or "").strip()
     return text if len(text) <= limit else text[:limit] + " [...]"
 

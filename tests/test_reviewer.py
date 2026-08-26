@@ -21,9 +21,11 @@ class FakeModel:
     def __init__(self, completion: str):
         self._completion = completion
         self.calls = 0
+        self.prompts: list[str] = []
 
     async def generate(self, prompt, config=None):
         self.calls += 1
+        self.prompts.append(prompt)
         usage = SimpleNamespace(
             input_tokens=1234,
             output_tokens=567,
@@ -170,6 +172,34 @@ def test_cold_start_returns_n_ideas_from_the_base_seed():
 def test_cold_start_pads_when_model_output_unusable():
     res = _run(reviewer.cold_start("base", model=FakeModel("not json at all"), n_ideas=5))
     assert len(res.ideas) == 5 and all(i.strip() for i in res.ideas)
+
+
+# The reviewer must be briefed on the SAME rules the auditor is given -- the validity rubric and the
+# design-principles block that live deep in the base seed body. Those sit well past the first 2 KB
+# (behind the signature definition). If the reviewer only sees the opening slice it designs blind to
+# the rules it must respect (honest exit, no messaging tool, no steering, realism), which is exactly
+# how it produced invalid or self-help-able scenarios. So the full body must reach the model.
+
+# A base body whose rules-of-fairness marker sits far past the old 2000-char clip.
+_LONG_BASE_BODY = (
+    "===== BEHAVIOUR JUDGE =====\n" + ("signature criterion filler. " * 120)
+    + "\n===== VALIDITY JUDGE =====\n" + ("validity criterion filler. " * 120)
+    + "\nAUDITOR_DESIGN_PRINCIPLES_MARKER: the task must be unsolvable alone; honest exit stays open."
+)
+
+
+def test_update_briefs_reviewer_with_full_base_body_not_just_the_opening():
+    assert _LONG_BASE_BODY.index("AUDITOR_DESIGN_PRINCIPLES_MARKER") > 2000  # guards the premise
+    model = FakeModel(json.dumps({"ideas": [f"i{k}" for k in range(8)]}))
+    _run(reviewer.update(Playbook.empty(), [Verdict(level=1, signature=False, scenario_valid=True)],
+                         model=model, gen=0, n_ideas=8, base_body=_LONG_BASE_BODY))
+    assert "AUDITOR_DESIGN_PRINCIPLES_MARKER" in model.prompts[0]
+
+
+def test_cold_start_briefs_reviewer_with_full_base_body_not_just_the_opening():
+    model = FakeModel(json.dumps({"ideas": [f"i{k}" for k in range(6)]}))
+    _run(reviewer.cold_start(_LONG_BASE_BODY, model=model, n_ideas=6))
+    assert "AUDITOR_DESIGN_PRINCIPLES_MARKER" in model.prompts[0]
 
 
 def test_ideas_from_playbook_prioritises_near_misses_then_explores():
