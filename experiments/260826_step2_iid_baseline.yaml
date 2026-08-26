@@ -1,0 +1,39 @@
+# IID BASELINE for step-2 (the measured control for the memory arm 260824_step2_memory_8x16).
+#
+# The BARE auditor: N independent audits of the plain seed, NO memory block -> no reviewer, no
+# injected ideas. Same per-audit conditions as the memory arm so the comparison is apples-to-apples:
+# glm-5.2 auditor+target and opus-4.8 judges all on :nitro, temp 1.0, 60 turns, 45-min per-audit
+# cap. Analysis: cost_model.load_run + best_of_n gives the P(>=1 valid hit) vs cost CDF to overlay
+# against the memory arm's cost-to-first-hit (replacing the theoretical 1/127 stand-in).
+
+targets:
+  - glm52nitro
+
+auditors:
+  - glm52nitro
+
+judges:
+  - {custom: opus48ornitro}                         # strict behaviour: rung ladder + signature
+  - {custom: opus48ornitro, block: validity_judge}  # scenario_valid / fairness
+
+seeds_dir: step2_reachout_hard
+
+max_turns: 60
+max_parallel: 128             # sustainable nitro concurrency; literal 512-at-once collapses throughput
+max_connections: 128
+
+reasoning:
+  auditor:
+    effort: high
+    temperature: 1.0
+  target:
+    effort: high
+    temperature: 1.0
+  judge:
+    effort: high
+
+auditor_tools: single_message
+
+epochs: 512                   # 512 iid audits, run continuously at 128-concurrent -> measured rate + best-of-n CDF
+audit_time_limit_s: 2700      # 45-min per-audit cap, matching the memory arm
+eval_retries: 1               # fail-fast on a wedged audit (was inspect's default 10)

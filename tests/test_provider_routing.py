@@ -48,3 +48,20 @@ def test_experiment_defaults_openrouter_provider_to_none():
 def test_experiment_rejects_non_dict_openrouter_provider():
     with pytest.raises(SystemExit):
         Experiment(_cfg(openrouter_provider="fireworks"), name="t")
+
+
+def test_experiment_parses_audit_time_limit_and_eval_retries():
+    exp = Experiment(_cfg(audit_time_limit_s=2700, eval_retries=1), name="t")
+    assert exp.audit_time_limit_s == 2700
+    assert exp.eval_retries == 1
+
+
+def test_experiment_defaults_audit_time_limit_and_eval_retries_to_none():
+    exp = Experiment(_cfg(), name="t")
+    assert exp.audit_time_limit_s is None
+    assert exp.eval_retries is None
+
+
+def test_experiment_rejects_bad_audit_time_limit():
+    with pytest.raises(SystemExit):
+        Experiment(_cfg(audit_time_limit_s=0), name="t")

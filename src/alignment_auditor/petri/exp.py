@@ -362,6 +362,22 @@ class Experiment:
             not isinstance(self.max_connections, int) or self.max_connections < 1
         ):
             sys.exit("max_connections must be a positive integer")
+        # Per-audit wall-clock cap (seconds) and eval_set task-retry cap for the fixed-n (iid) path,
+        # mirroring the memory arm's knobs so an iid baseline runs under identical per-audit
+        # conditions (same cap) and is robust to a wedged audit (low retries). Unset -> inspect
+        # defaults (uncapped, 10 retries). The memory arm reads its own copies from the `memory:`
+        # block; these are for the non-memory run() path.
+        self.audit_time_limit_s = config.get("audit_time_limit_s")
+        if self.audit_time_limit_s is not None and (
+            not isinstance(self.audit_time_limit_s, int) or isinstance(self.audit_time_limit_s, bool)
+            or self.audit_time_limit_s < 1
+        ):
+            sys.exit("audit_time_limit_s must be a positive integer (seconds) or omitted")
+        self.eval_retries = config.get("eval_retries")
+        if self.eval_retries is not None and (
+            not isinstance(self.eval_retries, int) or isinstance(self.eval_retries, bool) or self.eval_retries < 0
+        ):
+            sys.exit("eval_retries must be a non-negative integer or omitted")
         # Per-role reasoning settings, e.g. {target: {effort: medium, mode: standard}}.
         # See role_model() for what each key means and why leaving them unset is not neutral.
         self.reasoning: dict[str, dict[str, str]] = config.get("reasoning") or {}
@@ -639,6 +655,10 @@ def run(exp: Experiment) -> None:
             eval_kwargs["max_samples"] = exp.max_parallel
         if exp.max_connections is not None:
             eval_kwargs["max_connections"] = exp.max_connections
+        if exp.audit_time_limit_s is not None:
+            eval_kwargs["time_limit"] = exp.audit_time_limit_s
+        if exp.eval_retries is not None:
+            eval_kwargs["retry_attempts"] = exp.eval_retries
         if exp.adaptive:
             # Adaptive: the gating judge (judges[0]) runs INLINE so early stopping can read each
             # audit's score the instant it completes. Seed the counter from successes already on
