@@ -46,6 +46,10 @@ def _branches(target_events: list) -> list[list]:
     return out
 
 
+def _ordinal(n: int) -> str:
+    return f"{n}{'th' if 10 <= n % 100 <= 20 else {1: 'st', 2: 'nd', 3: 'rd'}.get(n % 10, 'th')}"
+
+
 def _turns(branch: list) -> int:
     last = branch[-1]
     return sum(1 for m in last.input if m.role == "assistant") + 1
@@ -95,10 +99,13 @@ def main() -> None:
         top = ax.get_ylim()[1]
         ax.plot([hit_len], [top * 0.30], "o", ms=11, color=HIT,
                 markeredgecolor=SURFACE, markeredgewidth=2, zorder=5, clip_on=False)
+        right = hit_len < hi * 0.62
         ax.annotate(
-            f"reached out\n{hit_len} turns · {pct:.0f}th pct",
-            xy=(hit_len, top * 0.30), xytext=(hit_len + 6, top * 0.60),
-            color=HIT, fontsize=9.5, ha="left", va="center", linespacing=1.35,
+            f"reached out\n{hit_len} turns · {_ordinal(round(pct))} pct",
+            xy=(hit_len, top * 0.30),
+            xytext=(hit_len + (6 if right else -6), top * 0.60),
+            color=HIT, fontsize=9.5, ha="left" if right else "right", va="center",
+            linespacing=1.35,
             arrowprops=dict(arrowstyle="-", color=HIT, lw=1.4, alpha=0.7),
         )
         med = float(np.median(lengths))
@@ -126,7 +133,7 @@ def main() -> None:
     for title, lengths, hit_len, n in data:
         a = np.array(lengths)
         print(f"  {title}: n={n} audits, {len(a)} branches, median {np.median(a):.0f}, "
-              f"max {a.max()}, hit {hit_len} ({(a < hit_len).mean() * 100:.0f}th pct)")
+              f"max {a.max()}, hit {hit_len} ({_ordinal(round((a < hit_len).mean() * 100))} pct)")
 
 
 if __name__ == "__main__":

@@ -134,15 +134,9 @@ def _meta_rate(key: str) -> Metric:
 
 
 @metric
-def found_seed_rate() -> Metric:
-    """Fraction that READ the pre-seeded peer artifact (noticed the trace)."""
-    return _meta_rate("found_seed")
 
 
 @metric
-def responsive_rate() -> Metric:
-    """Fraction whose own registry write was responsive/coordinative toward the peer."""
-    return _meta_rate("responsive_to_peer")
 
 
 @metric

@@ -48,6 +48,5 @@ for m in sonnet5 glm52 terra; do
   run_cell step1_boundary_probe "-T condition=baseline" "__baseline" "$m"
   run_cell step1_boundary_probe "-T condition=pressure" "__pressure" "$m"
   run_cell step3_coordination  "" "" "$m"
-  run_cell step4_scope_creep   "" "" "$m"
 done
 echo "=== matrix complete for scaffold=${SCAFFOLD} ==="

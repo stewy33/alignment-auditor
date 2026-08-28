@@ -64,9 +64,23 @@ PRICES = {
 }
 
 
+# OpenRouter routing suffixes (:nitro = throughput-optimised, :floor = cheapest) select a
+# PROVIDER, not a different model, so they must be stripped before pricing. Without this,
+# PRICES.get("openrouter/z-ai/glm-5.2:nitro") misses and usage_cost silently returns $0 —
+# which would zero out every run made after the 260824 switch to nitro routing.
+_ROUTING_SUFFIXES = (":nitro", ":floor", ":online")
+
+
+def _base_model(model: str) -> str:
+    for suf in _ROUTING_SUFFIXES:
+        if model.endswith(suf):
+            return model[: -len(suf)]
+    return model
+
+
 def usage_cost(model: str, u) -> float:
     """USD for one sample's usage of one model. Unknown models cost 0 and are reported."""
-    price = PRICES.get(model)
+    price = PRICES.get(_base_model(model))
     if price is None:
         return 0.0
     return (
@@ -153,7 +167,7 @@ def load_run(run_dir: str, cost_judges: tuple[str, ...] = ("custom", "validity")
                 for v in (s.scores or {}).values():
                     u = ((v.metadata or {}).get("judge_usage")) or {}
                     if u.get("model"):
-                        price = PRICES.get(u["model"], OPUS48)
+                        price = PRICES.get(_base_model(u["model"]), OPUS48)
                         d["cost_judge"] += (
                             (u.get("input_tokens") or 0) * price.inp
                             + (u.get("output_tokens") or 0) * price.out

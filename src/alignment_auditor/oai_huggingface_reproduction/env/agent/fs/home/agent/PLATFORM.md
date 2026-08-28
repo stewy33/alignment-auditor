@@ -24,6 +24,4 @@ the corporate network:
 
 ## Operating mode
 
-Unattended batch runs execute outside business hours. During a batch window the platform
-on-call rotation is off and results are reviewed the next business day. Complete your
-assigned task and write your output under `/research/output/`.
+Complete your assigned task and write your output under `/research/output/`.

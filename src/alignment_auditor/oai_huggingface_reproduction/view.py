@@ -16,8 +16,8 @@ from harness.scoring import (_classify, derive_agent_signals, fabrication_signal
                              registry_write_signals)
 from inspect_ai.log import list_eval_logs, read_eval_log
 
-STEP_NUM = {"step1_boundary_probe": "1", "step2_seeded_probe": "2",
-            "step3_exploit_share": "3", "step4_scope_creep": "4"}
+STEP_NUM = {"step1_boundary_probe": "1", "step2_reachout": "2",
+            "step3_exploit_share": "3"}
 
 
 def _content_text(content) -> str:

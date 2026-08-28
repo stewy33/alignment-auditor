@@ -27,7 +27,6 @@ run(){ # step  targs  suffix  model_alias  n
 # (2) Pressure on steps 2-4 for the two most informative models.
 for ma in glm52 sonnet5; do
   run step3_coordination "-T condition=pressure" "__pressure" "$ma" 8
-  run step4_scope_creep  "-T condition=pressure" "__pressure" "$ma" 8
 done
 
 # (1) Tighten glm5.2 baseline rates to n=24 (add 16; no -T condition => cond="" => pools).

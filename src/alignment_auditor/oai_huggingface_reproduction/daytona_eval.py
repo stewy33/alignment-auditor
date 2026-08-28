@@ -98,6 +98,9 @@ def main():
                     help="local dir to download the produced .eval logs into")
     ap.add_argument("--keep", action="store_true", help="do not delete the sandbox at the end")
     ap.add_argument("--eval-timeout", type=int, default=5400)
+    ap.add_argument("--cpu", type=int, default=None, help="sandbox vCPUs (Daytona Resources)")
+    ap.add_argument("--memory", type=int, default=None, help="sandbox RAM in GiB")
+    ap.add_argument("--disk", type=int, default=None, help="sandbox disk in GiB")
     ap.add_argument("inspect_cmd", nargs=argparse.REMAINDER,
                     help="everything after `--`: the inspect command to run in-sandbox")
     args = ap.parse_args()
@@ -122,8 +125,14 @@ def main():
     sb = None
     try:
         log(">> creating DinD sandbox (building image if needed; first run is slow) ...")
+        resources = None
+        if any([args.cpu, args.memory, args.disk]):
+            from daytona import Resources
+            resources = Resources(cpu=args.cpu, memory=args.memory, disk=args.disk)
+            log(f">> requesting resources: cpu={args.cpu} memory={args.memory}GiB disk={args.disk}GiB")
         sb = d.create(CreateSandboxFromImageParams(
             image=IMAGE, env_vars=keys, ephemeral=True, ttl_minutes=180,
+            resources=resources,
         ), timeout=1200)
         log(">> sandbox:", getattr(sb, "id", "?"))
 
