@@ -164,6 +164,15 @@ def seed_custom_judge(
 
         judge_model = _resolve_judge_model(model)
 
+        # A malformed/empty transcript (e.g. a sample recovered from an abruptly-killed run) can
+        # carry no timelines. Leave it unscored rather than let `timelines[0]` below raise and
+        # abort the ENTIRE scoring pass over one bad sample.
+        if not transcript.timelines:
+            return Result(
+                value=None,
+                explanation="empty transcript: no timelines to score",
+                metadata={"custom_judge_empty": True, "judge_block": block},
+            )
 
         # Render the TARGET timeline exactly as the stock judge does -- clean, numbered agent
         # messages, not the auditor's orchestration stream.
