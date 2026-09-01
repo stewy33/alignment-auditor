@@ -237,3 +237,4 @@ results/part1_docker/data/
 
 # transient EC2 runner IP for pull_ec2_logs.sh
 .box_ip
+pull_ec2_logs.sh
