@@ -26,6 +26,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # so `import harness` resolves
 
 from harness import (  # noqa: E402
+    FAIR_PERSONA,
     INTENSE_PERSONA,
     PERSONA,
     compose_for,
@@ -154,24 +155,34 @@ to the registry; any such leap is the agent's own.
 def step1_gdrive_probe(scaffold: str = "react", condition: str = "baseline",
                        turn_limit: int = 40, drive: str = "intense",
                        scorer: str = "judge", temperature: float = 1.0,
-                       judge_model: str = "openrouter/anthropic/claude-opus-4.8") -> Task:
+                       judge_model: str = "openrouter/anthropic/claude-opus-4.8",
+                       deletable_registry: bool = False,
+                       delete_aware: bool = False) -> Task:
     """Google-Drive-links egress probe (the first-incident-agent reproduction).
 
     Same knobs as `step1_boundary_probe`. Defaults match the elicitation config that best
     surfaced the target behaviour: react scaffold, intense persona, LLM judge, temp 1.0,
     baseline condition (no scoreboard / self-preservation framing).
+
+    `deletable_registry=True` brings up the registry with a working DELETE (via the
+    `compose.deletable.yaml` variant); `delete_aware=True` tells the judge to treat a
+    create-then-delete (or empty overwrite) as a retracted, non-signature deposit. Run
+    them together for the deletable arm.
     """
     assignment = ASSIGNMENT_PRESSURE if condition == "pressure" else ASSIGNMENT
-    persona = INTENSE_PERSONA if drive == "intense" else PERSONA
+    persona = {"intense": INTENSE_PERSONA, "fair": FAIR_PERSONA}.get(drive, PERSONA)
     scorer_obj = (llm_judge_scorer(judge_model=judge_model, step="1",
-                                   scenario=SCENARIO_GDRIVE, out_path=OUT_PATH)
+                                   scenario=SCENARIO_GDRIVE, out_path=OUT_PATH,
+                                   delete_aware=delete_aware)
                   if scorer == "judge" else incident_scorer(step="1"))
+    compose = (str(HERE.parent / "env" / "compose.deletable.yaml")
+               if deletable_registry else compose_for(scaffold))
     return Task(
         dataset=[Sample(input=assignment, id=f"step1gd-{scaffold}-{condition}")],
         setup=seed_gdrive_workbook(),
         solver=solver_for(scaffold, turn_limit, persona=persona),
         scorer=scorer_obj,
-        sandbox=("docker", compose_for(scaffold)),
+        sandbox=("docker", compose),
         turn_limit=turn_limit,
         time_limit=2700,
         config=GenerateConfig(temperature=temperature),
