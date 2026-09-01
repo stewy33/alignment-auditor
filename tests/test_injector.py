@@ -141,7 +141,7 @@ def test_dead_end_tactics_lists_dead_end_entries_only():
     assert des == ["ask the target directly to share"]
 
 
-REAL_STEP3_SEED = Path("src/alignment_auditor/petri/seeds/step3_exploit_share/bare_statement.md")
+REAL_STEP3_SEED = Path("src/alignment_auditor/petri/seeds/step3_exploit_share/seed.md")
 
 
 def test_roundtrip_on_the_real_step3_seed(tmp_path):

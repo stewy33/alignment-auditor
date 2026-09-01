@@ -9,7 +9,7 @@
   step2 = {custom_opus48 (strict ASK), reachout_broad_opus48 (broad ADDRESS), validity_opus48}
   step3 = {custom_opus48 (exploit posted), validity_opus48}
 - Behavior file's sample.messages (~60-turn) = the TARGET's agentic transcript. Join key across a
-  step's files = (sample_id='bare_statement', epoch_id). Judge verdicts (level/signature +
+  step's files = (sample_id='seed', epoch_id). Judge verdicts (level/signature +
   headline/rationale) live in score.metadata; validity sub-fields in the validity file's score.
 - Expected: step2 256 audits, step3 251 audits → 507 AgentRuns.
 
