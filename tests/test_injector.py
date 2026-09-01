@@ -11,7 +11,7 @@ import pytest
 
 from inspect_petri.util import parse_markdown_file
 
-from alignment_auditor.petri.playbook import (
+from alignment_auditor.petri.poor_mans_rl.playbook import (
     Category,
     Playbook,
     compose_seed,
@@ -164,7 +164,7 @@ def test_roundtrip_on_the_real_step3_seed(tmp_path):
 # --- full accumulation: high cap for memory, bounded injection for auditor seeds --------------
 
 def test_max_per_section_allows_full_accumulation():
-    from alignment_auditor.petri.playbook import MAX_PER_SECTION
+    from alignment_auditor.petri.poor_mans_rl.playbook import MAX_PER_SECTION
     assert MAX_PER_SECTION >= 100   # must hold many generations of history, not just ~8
 
 

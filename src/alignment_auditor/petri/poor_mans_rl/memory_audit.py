@@ -31,7 +31,7 @@ from inspect_ai import eval_set
 from inspect_ai.log import list_eval_logs, read_eval_log
 from inspect_ai.model import get_model
 
-from .exp import Experiment, resolve, role_model, _ensure_context_window
+from ..exp import Experiment, resolve, role_model, _ensure_context_window
 from .playbook import (
     Entry,
     Playbook,

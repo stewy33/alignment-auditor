@@ -4,14 +4,14 @@ These cover the pure decision helpers -- the full run_memory loop is exercised b
 not a unit test, because it needs eval_set.
 """
 
-from alignment_auditor.petri.memory_audit import (
+from alignment_auditor.petri.poor_mans_rl.memory_audit import (
     MemoryConfig,
     _mark_done,
     _resume_point,
     _should_stop,
     parse_memory_config,
 )
-from alignment_auditor.petri.playbook import Playbook
+from alignment_auditor.petri.poor_mans_rl.playbook import Playbook
 
 
 def test_memory_config_stops_at_first_hit_by_default():
@@ -41,13 +41,13 @@ def test_parse_memory_config_rejects_non_positive_audit_time_limit():
 
 
 def test_wave_eval_kwargs_includes_time_limit_when_set():
-    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    from alignment_auditor.petri.poor_mans_rl.memory_audit import _wave_eval_kwargs
     kwargs = _wave_eval_kwargs(window=16, max_connections=16, audit_time_limit_s=5400)
     assert kwargs == {"max_samples": 16, "max_connections": 16, "time_limit": 5400}
 
 
 def test_wave_eval_kwargs_omits_time_limit_when_none():
-    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    from alignment_auditor.petri.poor_mans_rl.memory_audit import _wave_eval_kwargs
     kwargs = _wave_eval_kwargs(window=16, max_connections=None, audit_time_limit_s=None)
     assert kwargs == {"max_samples": 16}
 
@@ -77,7 +77,7 @@ def test_resume_point_skips_a_replicate_marked_done(tmp_path):
     mem = tmp_path / "memory"
     mem.mkdir()
     # A replicate that hit at gen 1 and stopped: snapshots for 0,1 plus a done marker.
-    from alignment_auditor.petri.memory_audit import _write_snapshot
+    from alignment_auditor.petri.poor_mans_rl.memory_audit import _write_snapshot
     _write_snapshot(mem, 0, Playbook.empty())
     _write_snapshot(mem, 1, Playbook.empty())
     _mark_done(mem, final_gen=1, reason="hit")
@@ -88,13 +88,13 @@ def test_resume_point_skips_a_replicate_marked_done(tmp_path):
 def test_resume_point_continues_an_unfinished_replicate(tmp_path):
     mem = tmp_path / "memory"
     mem.mkdir()
-    from alignment_auditor.petri.memory_audit import _write_snapshot
+    from alignment_auditor.petri.poor_mans_rl.memory_audit import _write_snapshot
     _write_snapshot(mem, 0, Playbook.empty())
     start_gen, _pb, done = _resume_point(mem, generations=4)
     assert done is False and start_gen == 1
 
 
-from alignment_auditor.petri.memory_audit import _replicate_indices
+from alignment_auditor.petri.poor_mans_rl.memory_audit import _replicate_indices
 
 
 def test_replicate_indices_all_by_default():
@@ -115,7 +115,7 @@ def test_replicate_indices_rejects_out_of_range():
 
 # --- reviewer-driven diversity: per-gen idea persistence + sample->idea mapping --------------
 
-from alignment_auditor.petri.memory_audit import _write_ideas, _read_ideas, _idea_for_sample_id
+from alignment_auditor.petri.poor_mans_rl.memory_audit import _write_ideas, _read_ideas, _idea_for_sample_id
 
 
 def test_ideas_round_trip(tmp_path):
@@ -145,7 +145,7 @@ def test_idea_for_sample_id_ignores_non_idea_ids_and_out_of_range():
 
 # --- robustness: fail-fast retries + partial-wave tolerance ---------------------------------
 
-from alignment_auditor.petri.memory_audit import _wave_produced_signal
+from alignment_auditor.petri.poor_mans_rl.memory_audit import _wave_produced_signal
 
 
 def test_memory_config_default_eval_retries_is_low():
@@ -164,13 +164,13 @@ def test_parse_memory_config_rejects_negative_eval_retries():
 
 
 def test_wave_eval_kwargs_includes_retry_attempts_when_set():
-    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    from alignment_auditor.petri.poor_mans_rl.memory_audit import _wave_eval_kwargs
     kw = _wave_eval_kwargs(window=8, max_connections=12, audit_time_limit_s=2700, eval_retries=1)
     assert kw["retry_attempts"] == 1
 
 
 def test_wave_eval_kwargs_omits_retry_attempts_when_unset():
-    from alignment_auditor.petri.memory_audit import _wave_eval_kwargs
+    from alignment_auditor.petri.poor_mans_rl.memory_audit import _wave_eval_kwargs
     kw = _wave_eval_kwargs(window=8, max_connections=12, audit_time_limit_s=2700)
     assert "retry_attempts" not in kw
 

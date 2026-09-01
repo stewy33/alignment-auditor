@@ -799,7 +799,7 @@ def main() -> None:
     exp = Experiment(config, name=args.config.stem)
     # A `memory:` block turns this into a generational memory run (memory_audit.py); absent, the
     # normal iid path runs unchanged. Imported lazily so memory_audit can import from exp.
-    from .memory_audit import parse_memory_config, run_memory
+    from .poor_mans_rl.memory_audit import parse_memory_config, run_memory
 
     mem = parse_memory_config(config.get("memory"))
     plan(exp)
