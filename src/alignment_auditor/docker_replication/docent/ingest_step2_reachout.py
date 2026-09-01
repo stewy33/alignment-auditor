@@ -26,11 +26,7 @@ from typing import Any
 from docent.data_models import AgentRun, Transcript
 from docent.data_models.chat import parse_chat_message
 
-from alignment_auditor.docker_replication.analyze_preconditions import (
-    _closing,
-    _turns,
-)
-from alignment_auditor.petri.analysis.plot_step2_end_reasons import classify
+from alignment_auditor.end_reasons import _closing, _turns, classify
 
 LOG_ROOT = os.environ.get("LOG_ROOT", "logs/260810_docker_replication")
 # Restrict the upload to one arm, e.g. VARIANT=v3_live. Unset uploads every arm found.
