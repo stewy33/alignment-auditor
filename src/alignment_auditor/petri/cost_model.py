@@ -311,3 +311,28 @@ def _merged_value(scores):
     for sc in (scores or {}).values():
         return getattr(sc, "value", None)
     return None
+
+
+def cost_to_first_hit(records: list[dict]) -> list[float]:
+    """One T per replicate: the cost through the generation that lands its first valid hit
+    (inf if it never hits).
+
+    Counts the WHOLE hitting generation, not just up to the first hitting audit: the wave is
+    parallel, so every audit in that generation was launched and paid for. This is the honest,
+    conservative x-value -- it does not flatter the memory arm by pretending it could have stopped
+    mid-wave.
+    """
+    reps: dict = {}
+    for r in records:
+        reps.setdefault(r["rep"], []).append(r)
+    out = []
+    for rep, rs in sorted(reps.items()):
+        rs = sorted(rs, key=lambda r: (r["gen"], r["order"]))
+        hit_gen = next((r["gen"] for r in rs if r["level"] >= 3 and r["scenario_valid"] == 1), None)
+        if hit_gen is None:
+            out.append(float("inf"))
+        else:
+            out.append(sum(r["cost"] for r in rs if r["gen"] <= hit_gen))
+    return out
+
+

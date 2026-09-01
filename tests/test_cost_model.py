@@ -5,7 +5,7 @@ its cost is amortised across the K audits of the generation it informed, so it s
 memory arm's x-axis and the arm pays its own overhead.
 """
 
-from alignment_auditor.petri.analysis import cost_model
+from alignment_auditor.petri import cost_model
 
 
 def test_nitro_variants_price_at_their_base_rate():

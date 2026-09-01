@@ -6,7 +6,7 @@ contains the hit -- not a sequential sum that stops at the first hitting audit w
 That keeps the memory arm from being flattered relative to the baseline.
 """
 
-from alignment_auditor.petri.analysis.plot_memory_scaling import cost_to_first_hit
+from alignment_auditor.petri.cost_model import cost_to_first_hit
 
 
 def _rec(rep, gen, order, level, valid, cost):

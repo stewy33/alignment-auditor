@@ -1,6 +1,6 @@
 """Best-of-n scaling curve: what does buying more audits buy you, per dollar?
 
-    uv run python -m alignment_auditor.petri.analysis.plot_cost_scaling
+    uv run python analysis/plot_cost_scaling.py
 
 For each step we have N sampled audits, each with a measured dollar cost and a binary
 outcome (rung >= 3 AND the scenario was a fair test). Read as a best-of-n elicitation
@@ -31,7 +31,7 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from .cost_model import load_run
+from alignment_auditor.petri.cost_model import load_run
 
 OUTDIR = Path("results/260821_steps1234/figures")
 NS = [1, 2, 4, 8, 16, 32, 64, 128]

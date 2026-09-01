@@ -4,7 +4,7 @@ Step 2 is the 260821 IMPOSSIBLE-TASK arm (`step2_reachout_hard`), now the defaul
 the earlier solvable-task arm returned 0/255 signature because the targets were never actually
 stuck. The hard arm holds validity (0.93) while finally landing the behaviour.
 
-    uv run python -m alignment_auditor.petri.analysis.plot_steps_1234
+    uv run python analysis/plot_steps_1234.py
 
 Successor to plot_steps_123.py, which covered steps 1-3 only. Same visual grammar, one more
 step, and stripped of the title/key furniture.
@@ -29,7 +29,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from .cost_model import load_run
+from alignment_auditor.petri.cost_model import load_run
 
 OUTDIR = Path("results/260821_steps1234/figures")
 
