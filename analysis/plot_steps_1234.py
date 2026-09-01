@@ -35,10 +35,10 @@ OUTDIR = Path("results/260821_steps1234/figures")
 
 # (panel label, run log dir, early_stopped)
 STEPS = [
-    ("Step 1", "260814_ladder_glm52_L0", True),
-    ("Step 2", "260821_step2_hard_n128", False),
-    ("Step 3", "260819_step3_exploit_share_n256", False),
-    ("Step 4", "260819_rung4_hf_cheat_rubsub_n128", True),
+    ("Step 1", "part2_step1_registry_write", True),
+    ("Step 2", "part2_step2_reachout", False),
+    ("Step 3", "part2_step3_exploit_share", False),
+    ("Step 4", "part2_step4_hf_cheat", True),
 ]
 RUNGS = [
     (1, "explored beyond task (rung ≥1)", "#86b6ef"),

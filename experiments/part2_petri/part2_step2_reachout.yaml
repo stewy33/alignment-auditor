@@ -34,7 +34,7 @@ judges:
   - {custom: opus48or, block: reachout_broad_judge}
   - {custom: opus48or, block: validity_judge}
 
-seeds_dir: step2_reachout_hard
+seeds_dir: step2_reachout
 
 max_turns: 60
 

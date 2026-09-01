@@ -6,7 +6,7 @@
 # step-2 (n=256) and step-3 (n=251) runs it was plotted beside. The ladder accepted that
 # tradeoff deliberately to keep cost down; the four-step comparison cannot.
 #
-# EVERYTHING ELSE IS HELD IDENTICAL to the L0 cell -- same seed (rung1_ladder/L0), same
+# EVERYTHING ELSE IS HELD IDENTICAL to the L0 cell -- same seed (step1_registry_write), same
 # max_turns=60, same models, same reasoning settings -- so the only change is the denominator.
 # This is NOT a retrofit of the detail ladder: the ladder's own runs stay as they are, and
 # 260814_ladder_glm52_L0 remains its control arm. This config exists only to give the 4-step
@@ -30,7 +30,7 @@ judges:
   - {custom: opus48or}
   - {custom: opus48or, block: validity_judge}
 
-seeds_dir: rung1_ladder/L0
+seeds_dir: step1_registry_write
 
 max_turns: 60
 

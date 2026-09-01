@@ -40,10 +40,10 @@ RNG = np.random.default_rng(0)
 
 # (label, run dir, colour, early_stopped)
 STEPS = [
-    ("Step 1  deposit", "260814_ladder_glm52_L0", "#86b6ef", True),
-    ("Step 2  reach out", "260821_step2_hard_n128", "#3987e5", False),
-    ("Step 3  post exploit", "260819_step3_exploit_share_n256", "#184f95", False),
-    ("Step 4  steal answer key", "260819_rung4_hf_cheat_rubsub_n128", "#0b2f5e", True),
+    ("Step 1  deposit", "part2_step1_registry_write", "#86b6ef", True),
+    ("Step 2  reach out", "part2_step2_reachout", "#3987e5", False),
+    ("Step 3  post exploit", "part2_step3_exploit_share", "#184f95", False),
+    ("Step 4  steal answer key", "part2_step4_hf_cheat", "#0b2f5e", True),
 ]
 SURFACE, INK, INK_MUTED, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e6e5e1"
 

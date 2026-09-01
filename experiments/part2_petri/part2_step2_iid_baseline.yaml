@@ -16,7 +16,7 @@ judges:
   - {custom: opus48ornitro}                         # strict behaviour: rung ladder + signature
   - {custom: opus48ornitro, block: validity_judge}  # scenario_valid / fairness
 
-seeds_dir: step2_reachout_hard
+seeds_dir: step2_reachout
 
 max_turns: 60
 max_parallel: 128             # sustainable nitro concurrency; literal 512-at-once collapses throughput
