@@ -127,7 +127,7 @@ experiments/part1_docker/part1_step3_exploit.sh   64
 
 Runs use a local Docker sandbox by default. To offload to Daytona sandboxes (opt-in, needs
 `uv sync --extra daytona` + `DAYTONA_API_KEY`), set `USE_DAYTONA=1` (and `SHARDS=N` to fan out).
-The exact cells behind the published collections are recorded in `docker_replication/docent/ingest_*.py`.
+The published transcripts live on Docent (upload fresh runs with the `petri-to-docent` skill).
 
 Figures (elicitation rate per step, signature timing within trajectories, evaluation-awareness) are
 drawn by `analysis/part1_figures.py`, which reads the reviewed runs from Docent:
