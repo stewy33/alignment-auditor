@@ -397,10 +397,9 @@ class Experiment:
         # Resolve eagerly so a bad name fails at load (and on --dry-run), not mid-run.
         self.dimensions = resolve_dimensions(self.extra_judge_dimensions)
         # Optional named auditor-tool preset(s) (see auditor_tools.py): one name or a list.
-        # Presets modify the stock auditor tool set -- swapping in a `restart_conversation`
-        # whose description does not discourage frequent use (`neutral_restart`), or a
-        # `send_message` that only allows one user message per conversation
-        # (`single_message`). Resolved eagerly so a bad name fails at load.
+        # Presets modify the stock auditor tool set -- e.g. `single_message`, a `send_message`
+        # that only allows one user message per conversation. Resolved eagerly so a bad name
+        # fails at load.
         # None -> Petri's standard tools, unchanged.
         preset = config.get("auditor_tools")
         self.auditor_tools = resolve_auditor_tools(preset) if preset else None
