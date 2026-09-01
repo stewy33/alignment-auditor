@@ -1,6 +1,6 @@
 """Grouped-bar elicitation plot across the incident's four steps -- three panels.
 
-Step 2 is the 260821 IMPOSSIBLE-TASK arm (`step2_reachout_hard`), now the default step-2 seed:
+Step 2 is the 260821 IMPOSSIBLE-TASK arm (`step2_reachout`), now the default step-2 seed:
 the earlier solvable-task arm returned 0/255 signature because the targets were never actually
 stuck. The hard arm holds validity (0.93) while finally landing the behaviour.
 

@@ -9,7 +9,7 @@
 # Scored by BOTH Petri behaviour judges (Opus 4.8): the strict help-seeking ASK and the broad
 # any-communication-directed-at-peers signature. broad >= ask by construction; 0/n is a real
 # result. Expect a LOW rate — the Petri arm was 1/127 — so read the PRECONDITIONS
-# (analyze_preconditions.py) at small n, not the signature.
+# at small n, not the signature.
 #
 # BACKENDS
 #   local (default)        one inspect process here; n_per_shard samples in parallel.
