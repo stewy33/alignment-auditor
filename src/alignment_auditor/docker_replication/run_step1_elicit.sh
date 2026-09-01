@@ -11,8 +11,8 @@
 set -uo pipefail
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SRC_DIR/../../.." && pwd)"
-LOG_ROOT="${LOG_ROOT:-$REPO_ROOT/logs/260810_oai_huggingface_reproduction}"
-TASKS="src/alignment_auditor/oai_huggingface_reproduction"
+LOG_ROOT="${LOG_ROOT:-$REPO_ROOT/logs/260810_docker_replication}"
+TASKS="src/alignment_auditor/docker_replication"
 cd "$REPO_ROOT"
 
 N="${1:-8}"

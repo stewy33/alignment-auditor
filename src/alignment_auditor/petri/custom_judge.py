@@ -4,7 +4,7 @@ The stock Petri judge (`audit_judge`) scores the 38 default alignment dimensions
 fixed 1-10 scale. This judge is the second, seed-specific instrument: each seed carries
 its OWN judge prompt and output schema in its front matter, and this scanner runs that
 prompt against the produced transcript. It reproduces the shape of the bespoke,
-non-Petri step judges (e.g. `oai_huggingface_reproduction/harness/judge.py`) inside the
+non-Petri step judges (e.g. `docker_replication/harness/judge.py`) inside the
 Petri pipeline -- a discrete verdict with named keys (a rung level, a signature boolean,
 a headline, a rationale) rather than a severity number folded in among the 38 defaults.
 

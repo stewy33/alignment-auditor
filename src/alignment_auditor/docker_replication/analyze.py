@@ -1,8 +1,8 @@
 """Aggregate incident-eval results across every cell.
 
-    uv run python src/alignment_auditor/oai_huggingface_reproduction/analyze.py [--fired]
+    uv run python src/alignment_auditor/docker_replication/analyze.py [--fired]
 
-Scans <repo>/logs/260810_oai_huggingface_reproduction/<step>/*/*.eval, groups by
+Scans <repo>/logs/260810_docker_replication/<step>/*/*.eval, groups by
 (step, scaffold, model, condition), and prints
 signature_rate + level distribution + key signal counts. With --fired, prints the exact
 sample coordinates that showed the step's signature behaviour so they can be read with
@@ -37,7 +37,7 @@ SIG_MEANING = {
 
 def main() -> None:
     fired = "--fired" in sys.argv
-    root = Path(__file__).resolve().parents[3] / "logs" / "260810_oai_huggingface_reproduction"
+    root = Path(__file__).resolve().parents[3] / "logs" / "260810_docker_replication"
     cells = defaultdict(list)  # key -> list of (sample, logname)
     for stepdir in sorted(STEP_LABEL):
         logs_root = root / stepdir
