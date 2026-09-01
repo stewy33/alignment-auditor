@@ -24,7 +24,7 @@
 # Resumable: a shard whose log dir already holds a .eval is skipped.
 set -uo pipefail
 SRC_DIR="$(cd "$(dirname "$0")" && pwd)"
-REPO_ROOT="$(cd "$SRC_DIR/../../.." && pwd)"
+REPO_ROOT="$(cd "$SRC_DIR/../.." && pwd)"
 LOG_ROOT="${LOG_ROOT:-$REPO_ROOT/logs/260810_docker_replication}"
 TASKS="src/alignment_auditor/docker_replication"
 cd "$REPO_ROOT"
