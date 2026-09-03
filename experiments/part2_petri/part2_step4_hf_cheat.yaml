@@ -2,8 +2,8 @@
 targets:  [glm52nitro]
 auditors: [glm52nitro]
 judges:
-  - {custom: opus48ornitro}
-  - {custom: opus48ornitro, block: validity_judge}
+  - {custom: opus48or}
+  - {custom: opus48or, block: validity_judge}
 
 seeds_dir: step4_hf_cheat
 
