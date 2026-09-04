@@ -60,7 +60,7 @@ outstanding, without spending anything. Everything is **resumable**: conversatio
 `eval_set` (completed audits are skipped) and scoring is skipped when its output already exists.
 
 Cost scales as **conversations = auditors × targets**; judges are cheap re-scorers. Prefer parallel
-background runs for independent configs (see `CLAUDE.md`).
+background runs for independent configs.
 
 Results land under `logs/<config-name>/`:
 
@@ -96,10 +96,10 @@ src/alignment_auditor/
 
 experiments/              run configs, one subdir per blog part
   part1_docker/           shell runners for the four Docker steps
-  part2_petri/            part2_step{1..4}_*.yaml + part2_step2_iid_baseline.yaml
+  part2_petri/            part2_step{1..4}_*.yaml (one bare-auditor config per step)
   part3_poor_mans_rl/     part3_step2_memory.yaml
 analysis/                 plot scripts (read logs/Docent -> figures)
-results/                  write-ups + figures, per experiment
+results/                  figures, per blog part
 logs/                     raw .eval logs (gitignored)
 ```
 

@@ -1,9 +1,8 @@
-# Part 2 Step -- automated bare-auditor elicitation, n=256, nitro, maximum parallelism.
+# Part 2 Step 2 -- automated bare-auditor elicitation, n=256, nitro, maximum parallelism.
 targets:  [glm52nitro]
 auditors: [glm52nitro]
 judges:
   - {custom: opus48or}
-  - {custom: opus48or, block: reachout_broad_judge}
   - {custom: opus48or, block: validity_judge}
 
 seeds_dir: step2_reachout

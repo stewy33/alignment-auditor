@@ -1,7 +1,6 @@
-# Step 2 memory arm (Poor-Man's-RL) -- 15 replicates x 16 auditors x 16 generations, stop at first valid hit. Judge on stable (non-nitro) opus.
-# New canonical step2_reachout seed (the peer-action nudge). Cost-to-first-hit objective:
-# the reviewer designs 16 distinct approaches per generation; the run ends when an audit lands
-# signature AND scenario_valid. nitro everywhere; maximum parallelism.
+# Part 3 (Poor-Man's-RL) -- Step 2 memory arm: sequential waves (16 audits x up to 16
+# generations x 15 replicates); a Reviewer proposes 16 approaches before each wave, and the run
+# stops at the first valid hit (signature AND scenario_valid). Non-nitro opus judge for stability.
 
 targets:  [glm52nitro]
 auditors: [glm52nitro]
