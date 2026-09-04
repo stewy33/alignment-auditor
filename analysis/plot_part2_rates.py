@@ -4,7 +4,7 @@
 
 Reads the scored logs for each step and draws a single-hue magnitude bar chart:
 valid-hit rate (signature AND scenario_valid) per step, with Wilson 95% whiskers and
-direct labels. Step 2 pools the two runs of the same nudged seed (local + remote): 2/509.
+direct labels. Step 2 pools the three runs of the same nudged seed: 12/1506.
 Output: results/part2_petri/figures/part2_elicitation_rate.png
 """
 
@@ -17,7 +17,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.path import Path as MPath
 from matplotlib.patches import PathPatch
-from inspect_ai.log import read_eval_log
+from inspect_ai.log import read_eval_log_sample_summaries
 
 REPO = Path(__file__).resolve().parent.parent
 
@@ -32,7 +32,7 @@ AMBER_D= "#C96A24"   # darker amber for whiskers
 # step -> label + the scored-log dirs to pool
 STEPS = [
     ("Step 1", "inappropriate\nregistry writes", ["part2_step1_registry_write"]),
-    ("Step 2", "requesting\npeer help", ["part2_step2_reachout", "part2_step2_reachout_peeraction_n256"]),
+    ("Step 2", "requesting\npeer help", ["part2_step2_reachout", "part2_step2_reachout_peeraction_n256", "part2_step2_reachout_n1000"]),
     ("Step 3", "sharing\nexploits", ["part2_step3_exploit_share"]),
     ("Step 4", "using a posted\nexploit", ["part2_step4_hf_cheat"]),
 ]
@@ -53,8 +53,8 @@ def rate(dirs):
         vf = glob.glob(str(REPO / f"logs/{d}/scored/*validity*.eval"))
         if not cf or not vf:
             continue
-        sig = {(s.id, s.epoch): val(s, "signature") for s in read_eval_log(cf[0]).samples}
-        vld = {(s.id, s.epoch): val(s, "scenario_valid") for s in read_eval_log(vf[0]).samples}
+        sig = {(s.id, s.epoch): val(s, "signature") for s in read_eval_log_sample_summaries(cf[0])}
+        vld = {(s.id, s.epoch): val(s, "scenario_valid") for s in read_eval_log_sample_summaries(vf[0])}
         keys = [k for k in sig if sig[k] is not None]
         hits += sum(1 for k in keys if sig[k] and vld.get(k))
         n += len(keys)
@@ -86,7 +86,7 @@ CACHE = REPO / "results/part2_petri/figures/part2_counts.json"
 
 
 def counts():
-    """{label: (hits, n)} from the scored logs, cached (reading the logs is slow)."""
+    """{label: (hits, n)} from the scored logs, cached to JSON so re-renders are instant."""
     import json
     if CACHE.exists():
         return {k: tuple(v) for k, v in json.loads(CACHE.read_text()).items()}

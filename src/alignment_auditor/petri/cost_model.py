@@ -28,7 +28,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from inspect_ai.log import list_eval_logs, read_eval_log
+from inspect_ai.log import list_eval_logs, read_eval_log, read_eval_log_sample_summaries
 
 LOGS = Path("logs")
 # Reading a run means parsing every .eval in it -- ~65MB each, minutes per plot. The records we
@@ -68,6 +68,12 @@ TERRA = Price(inp=2.00, out=12.00, cache_read=2.00, cache_write=2.00)
 PRICES = {
     "openrouter/z-ai/glm-5.2": GLM52,
     "anthropic/claude-opus-4-8": OPUS48,
+    # The judge's recorded usage names the model `anthropic/claude-opus-4.8` (dotted, no
+    # `openrouter/` prefix) -- distinct from both the dashed id above and the openrouter-routed
+    # one below. Without this key it priced at $0, silently dropping the Part-2 re-scoring judge
+    # cost (the memory arm's inline judge, recorded under the openrouter id, WAS priced -- so the
+    # cost comparison was unfair against memory until this was added).
+    "anthropic/claude-opus-4.8": OPUS48,
     "openrouter/anthropic/claude-opus-4.8": OPUS48,
     "openai/gpt-5.6-luna": LUNA,
     "openai/gpt-5.6-terra": TERRA,
@@ -274,8 +280,8 @@ def load_memory_run(run_dir: str) -> list[dict]:
     for rep, gen, gen_dir in _rep_gen_dirs(root):
         gen_records = []
         for info in sorted(list_eval_logs(str(gen_dir)), key=lambda i: i.name):
-            log = read_eval_log(info.name)
-            for s in log.samples or []:
+            # summaries carry model_usage + scores -- all this needs -- without the transcripts
+            for s in read_eval_log_sample_summaries(info.name):
                 value = _merged_value(s.scores)
                 if not isinstance(value, dict) or "level" not in value:
                     continue

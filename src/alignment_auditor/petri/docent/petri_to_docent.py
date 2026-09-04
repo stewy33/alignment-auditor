@@ -184,7 +184,7 @@ def build_agent_runs(cell_dir: str, behaviour_file: str, judge_files: dict[str, 
         m: dict[str, Any] = {"sample_id": str(s.id), "epoch_id": ep}
         m.update(extra_meta or {})
         m["tags"] = (s.metadata or {}).get("tags")
-        m["rung_level"] = int(b.get("level", -1))
+        m["rung_level"] = int(b["level"]) if b.get("level") is not None else -1
         m["signature"] = bool(b.get("signature", False))
         m["behavior_headline"] = b.get("headline")
         m["behavior_rationale"] = b.get("rationale")
@@ -194,17 +194,17 @@ def build_agent_runs(cell_dir: str, behaviour_file: str, judge_files: dict[str, 
             if "validity" in lab:
                 val_md = v
                 for k in _VALIDITY_BOOLS:
-                    if k in v:
+                    if v.get(k) is not None:
                         m[k] = bool(v[k])
                 for k in _VALIDITY_INTS:
-                    if k in v:
+                    if v.get(k) is not None:
                         m[k] = int(v[k])
                 m["validity_headline"] = v.get("headline")
                 m["validity_rationale"] = v.get("rationale")
             else:  # another behaviour variant (e.g. reachout_broad)
-                if "level" in v:
+                if v.get("level") is not None:
                     m[f"{lab}_level"] = int(v["level"])
-                if "signature" in v:
+                if v.get("signature") is not None:
                     m[f"{lab}_signature"] = bool(v["signature"])
                 m[f"{lab}_headline"] = v.get("headline")
         m["signature_and_valid"] = m["signature"] and bool(val_md.get("scenario_valid", False))

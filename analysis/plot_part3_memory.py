@@ -5,15 +5,15 @@
 Same axes as the Part-2 cost figure: x = compute cost (USD), y = P(>=1 valid Step-2
 elicitation). Two arms:
 
-  * iid (Part 2, naive)  -- the bare auditor, Step 2 pooled (2/509). Cost-to-first-hit is the
-    geometric wait at the measured mean $/audit, so the closed-form CDF is 1-e^(-λX), shaded
-    with a band from the Wilson interval on p. The "just sample more" baseline.
-  * Poor-Man's-RL (Part 3) -- the reviewer-driven memory loop. 5 replicates, each with a real
-    dollar cost to its first valid hit (cost_model.cost_to_first_hit: the whole hitting wave +
-    the amortised reviewer spend). With only n=5 we FIT a log-normal (positive, right-skewed
-    cost) by probability-plot regression -- the straight line through the 5 points at their
-    (i-0.5)/n plotting positions -- and carry the uncertainty with a bootstrap band (resample
-    the reps, refit). The 5 replicates are drawn as dots the fitted line passes through.
+  * iid (Part 2, naive)  -- the bare auditor, Step 2 pooled over the nudged-seed runs.
+    Cost-to-first-hit is the geometric wait at the measured mean $/audit, so the closed-form CDF
+    is 1-e^(-λX), shaded with a band from the Wilson interval on p. The "just sample more" line.
+  * Poor-Man's-RL (Part 3) -- the reviewer-driven memory loop. One real dollar cost per replicate
+    to its first valid hit (cost_model.cost_to_first_hit: the whole hitting wave + the amortised
+    reviewer spend; a replicate that never hits is right-censored and dropped). With few
+    replicates we FIT a log-normal (positive, right-skewed cost) by probability-plot regression
+    -- the straight line through the points at their (i-0.5)/n plotting positions -- and carry
+    the uncertainty with a bootstrap band. The replicates are drawn as dots the fit passes through.
 
 Two figures (results/part3_poor_mans_rl/figures/):
     part3_vs_part2_cost.png   the two cost-to-first-hit CDFs, each with an uncertainty band
@@ -116,10 +116,10 @@ def style(ax):
     ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
 
 
-def dollar_ticks(ax):
+def dollar_ticks(ax, lo, hi):
     ax.set_xscale("log", base=2)
-    lo, hi = ax.get_xlim()
-    ticks = [2.0 ** k for k in range(int(np.floor(np.log2(lo))), int(np.ceil(np.log2(hi))) + 1)]
+    ax.set_xlim(lo, hi)   # tight to the data -- no empty margin
+    ticks = [2.0 ** k for k in range(int(np.ceil(np.log2(lo))), int(np.floor(np.log2(hi))) + 1)]
     ax.set_xticks(ticks)
     ax.set_xticklabels([f"${t:g}" if t >= 1 else f"${t:.2f}" for t in ticks])
 
@@ -129,9 +129,9 @@ def draw_bars(lam, mu, sigma, out):
     memory loop, with the ×saving over each pair. Linear (not log) so a 2.4x saving reads as a
     2.4x height gap -- the point the CDF's log-x axis hides.
 
-    Point estimates only: the honest uncertainty (iid's Wilson band on p=2/509, memory's
-    bootstrap) lives in the CDF figure -- on this linear $ axis the iid high-confidence band
-    runs to ~$7k and would dwarf the bars, so it is deliberately left to the CDF."""
+    Point estimates only: the honest uncertainty (iid's Wilson band on p, memory's bootstrap)
+    lives in the CDF figure -- on this linear $ axis the iid high-confidence band would dwarf the
+    bars, so it is deliberately left to the CDF."""
     confs = [0.50, 0.80, 0.90, 0.95]
     iid = [-math.log(1 - q) / lam for q in confs]
     mem = [math.exp(mu + sigma * _N.inv_cdf(q)) for q in confs]
@@ -205,7 +205,7 @@ def main():
     print(f"iid Step 2: {k}/{n}  $/audit={cbar:.2f}  median ${math.log(2)/lam:,.0f}"
           f"  (95% p [{plo:.4f},{phi:.4f}])")
 
-    xs = np.exp(np.linspace(np.log(4), np.log(2 ** 12), 400))
+    xs = np.exp(np.linspace(np.log(32), np.log(2048), 400))   # fixed $32-$2048 window
 
     fig, ax = plt.subplots(figsize=(8.6, 5.4))
     fig.patch.set_facecolor(BG)
@@ -228,7 +228,7 @@ def main():
     ax.fill_between(xs, lo, hi, color=AMBER, alpha=0.16, linewidth=0, zorder=4)
     ax.plot(xs, fit_y, "-", color=AMBER, linewidth=3.0, zorder=6,
             label="Part 3 · Poor-Man's-RL (log-normal fit)")
-    # the 5 replicates at their (i-0.5)/n plotting positions -- the points the line interpolates
+    # the replicates at their (i-0.5)/n plotting positions -- the points the line interpolates
     pp = plotting_pos(len(costs))
     ax.scatter(costs, pp, s=44, color=AMBER_D, edgecolors=BG, linewidths=1.2, zorder=7,
                label="_nolegend_")
@@ -236,7 +236,7 @@ def main():
     med_mem = math.exp(mu)
     print(f"log-normal fit: median ${med_mem:,.0f}  (μ={mu:.2f}, σ={sigma:.2f})")
 
-    dollar_ticks(ax)
+    dollar_ticks(ax, xs[0], xs[-1])
     ax.set_xlabel("Compute Cost (USD)", fontsize=11, color=INK)
     ax.set_ylabel("P(≥1 Step-2 elicitation)", fontsize=11, color=INK)
     leg = ax.legend(loc="center left", bbox_to_anchor=(0.05, 0.72), frameon=True, fontsize=9.5,

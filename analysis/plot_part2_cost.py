@@ -21,9 +21,10 @@ independent exponentials, which is a HYPOEXPONENTIAL, and it too has a closed-fo
 giving P(all four behaviours elicited) vs total compute. Because the sum is >= any one step's
 cost, the incident CDF is <= each step's at every budget by construction (recreating everything
 requires Step 2, so it can never be more likely than eliciting Step 2 alone). Both forms are
-exact and reproduce the measured medians (step median = ln2 / λ = c̄·ln2 / -ln(1-p)).
+exact and reproduce the measured medians (step median = ln2 / λ = c̄·ln2 / -ln(1-p)). Each
+curve is shaded with the band from the Wilson interval on its measured p.
 
-Output: results/part2_petri/figures/part2_cost.png
+Output: results/part2_petri/figures/part2_cost_ci.png
 
 COST comes straight from the scored logs (the local runs have no conv/ dir): each scored
 log is a copy of the rollout, so the glm auditor+target `model_usage` rides along, and the
@@ -41,7 +42,7 @@ import numpy as np
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from inspect_ai.log import read_eval_log
+from inspect_ai.log import read_eval_log_sample_summaries
 
 from alignment_auditor.petri.cost_model import reviewer_usage_cost, usage_cost
 
@@ -59,11 +60,11 @@ COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4"]
 INCIDENT = "#2C3E50"   # the whole-incident aggregate: dark navy, thick + dashed (an emphasis
                        # line, not a 5th category -- it tracks Step 2, styled to stand apart)
 
-# step -> label + the scored-log dirs to pool (Step 2 pools both nudged-seed runs, as the
-# rate figure does: 509 audits total)
+# step -> label + the scored-log dirs to pool (Step 2 pools the three nudged-seed runs, as the
+# rate figure does: ~1506 audits total)
 STEPS = [
     ("Step 1", "inappropriate registry writes", ["part2_step1_registry_write"]),
-    ("Step 2", "requesting peer help", ["part2_step2_reachout", "part2_step2_reachout_peeraction_n256"]),
+    ("Step 2", "requesting peer help", ["part2_step2_reachout", "part2_step2_reachout_peeraction_n256", "part2_step2_reachout_n1000"]),
     ("Step 3", "sharing exploits", ["part2_step3_exploit_share"]),
     ("Step 4", "using a posted exploit", ["part2_step4_hf_cheat"]),
 ]
@@ -87,7 +88,11 @@ def _judge_cost(sample):
 
 def load_step(dirs):
     """(costs, wins) per audit, pooled over `dirs`. cost = glm rollout + custom + validity
-    judge; win = signature AND scenario_valid."""
+    judge; win = signature AND scenario_valid.
+
+    Reads the lightweight per-sample SUMMARIES (model_usage + scores + score metadata), not the
+    full transcripts -- ~0.2s/file vs minutes for read_eval_log, and everything the cost/outcome
+    needs lives in the summary."""
     costs, wins = [], []
     for d in dirs:
         cf = glob.glob(str(REPO / f"logs/{d}/scored/*custom*.eval"))
@@ -95,17 +100,16 @@ def load_step(dirs):
         if not cf or not vf:
             print(f"!! {d}: missing custom/validity scored log")
             continue
-        clog, vlog = read_eval_log(cf[0]), read_eval_log(vf[0])
         # rollout cost + strict signature from the custom log (rollout taken here only)
         roll, sig, jc = {}, {}, {}
-        for s in clog.samples or []:
+        for s in read_eval_log_sample_summaries(cf[0]):
             k = (s.id, s.epoch)
             roll[k] = sum(usage_cost(m, u) for m, u in (s.model_usage or {}).items())
             sig[k] = _val(s, "signature")
             jc[k] = _judge_cost(s)
         # scenario_valid + its judge cost from the validity log
         vld, jv = {}, {}
-        for s in vlog.samples or []:
+        for s in read_eval_log_sample_summaries(vf[0]):
             k = (s.id, s.epoch)
             vld[k] = _val(s, "scenario_valid")
             jv[k] = _judge_cost(s)
@@ -121,7 +125,7 @@ DATA_CACHE = OUTDIR / "part2_cost_data.json"
 
 
 def load_all():
-    """[(costs, wins)] per step, cached (parsing the ~50MB scored logs takes minutes)."""
+    """[(costs, wins)] per step, cached to JSON so re-renders are instant."""
     import json
     if DATA_CACHE.exists():
         d = json.loads(DATA_CACHE.read_text())
@@ -191,19 +195,19 @@ def style(ax):
     ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
 
 
-def dollar_ticks(ax):
+def dollar_ticks(ax, lo, hi):
     ax.set_xscale("log", base=2)
-    lo, hi = ax.get_xlim()
-    ticks = [2.0 ** k for k in range(int(np.floor(np.log2(lo))), int(np.ceil(np.log2(hi))) + 1)]
+    ax.set_xlim(lo, hi)   # tight to the data -- no empty margin
+    ticks = [2.0 ** k for k in range(int(np.ceil(np.log2(lo))), int(np.floor(np.log2(hi))) + 1)]
     ax.set_xticks(ticks)
     ax.set_xticklabels([f"${t:g}" if t >= 1 else f"${t:.2f}" for t in ticks])
 
 
-def draw(loaded, lams, xs, bands, out):
-    """Render the figure. bands=True shades each curve's uncertainty from the Wilson interval
-    on the measured p (the dominant sampling error; c̄ is held fixed). For the incident, the
-    hypoexponential CDF is monotone increasing in every λ, so the band's envelope is exactly
-    the all-λ_lo (slowest) and all-λ_hi (fastest) corners -- deterministic, no MC."""
+def draw(loaded, lams, xs, out):
+    """Render the figure: each step's closed-form cost CDF + the whole-incident hypoexponential,
+    each shaded with the band from the Wilson interval on its measured p (the dominant sampling
+    error; c̄ held fixed). The incident CDF is monotone increasing in every λ, so its band
+    envelope is exactly the all-λ_lo (slowest) and all-λ_hi (fastest) corners -- no MC."""
     fig, ax = plt.subplots(figsize=(8.6, 5.4))
     fig.patch.set_facecolor(BG)
     fig.subplots_adjust(left=0.10, right=0.97, top=0.95, bottom=0.13)
@@ -213,24 +217,21 @@ def draw(loaded, lams, xs, bands, out):
     for (label, sub, _dirs), (costs, wins), lam, col in zip(STEPS, loaded, lams, COLORS):
         line, = ax.plot(xs, step_cdf(lam, xs), "-", color=col, linewidth=2.2, zorder=3,
                         label=f"{label} · {sub}")
-        if bands:
-            plo, phi = wilson(int(wins.sum()), len(wins))
-            cbar = float(costs.mean())
-            ax.fill_between(xs, step_cdf(rate_from(plo, cbar), xs),
-                            step_cdf(rate_from(phi, cbar), xs),
-                            color=col, alpha=0.15, linewidth=0, zorder=2)
+        plo, phi = wilson(int(wins.sum()), len(wins))
+        cbar = float(costs.mean())
+        ax.fill_between(xs, step_cdf(rate_from(plo, cbar), xs), step_cdf(rate_from(phi, cbar), xs),
+                        color=col, alpha=0.15, linewidth=0, zorder=2)
         handles.append(line)
 
     inc, = ax.plot(xs, incident_cdf(lams, xs), "--", color=INCIDENT, linewidth=3.0, zorder=6,
                    label="Whole incident (all 4)")
-    if bands:
-        lo = [rate_from(wilson(int(w.sum()), len(w))[0], float(c.mean())) for c, w in loaded]
-        hi = [rate_from(wilson(int(w.sum()), len(w))[1], float(c.mean())) for c, w in loaded]
-        ax.fill_between(xs, incident_cdf(lo, xs), incident_cdf(hi, xs),
-                        color=INCIDENT, alpha=0.13, linewidth=0, zorder=5)
+    lo = [rate_from(wilson(int(w.sum()), len(w))[0], float(c.mean())) for c, w in loaded]
+    hi = [rate_from(wilson(int(w.sum()), len(w))[1], float(c.mean())) for c, w in loaded]
+    ax.fill_between(xs, incident_cdf(lo, xs), incident_cdf(hi, xs),
+                    color=INCIDENT, alpha=0.13, linewidth=0, zorder=5)
     handles.append(inc)
 
-    dollar_ticks(ax)
+    dollar_ticks(ax, xs[0], xs[-1])
     ax.set_xlabel("Compute Cost (USD)", fontsize=11, color=INK)
     ax.set_ylabel("P(≥1 elicitation)", fontsize=11, color=INK)
     leg = ax.legend(handles=handles, loc="center", bbox_to_anchor=(0.37, 0.63),
@@ -252,22 +253,19 @@ def main():
     # Closed-form curves (no Monte Carlo): each step's cost-to-first-hit is Exponential(λ),
     # the incident is their hypoexponential sum -- so the incident is <= every step at all X.
     lams = [step_rate(c, w) for c, w in loaded]
-    # x-grid up to where the incident is essentially certain (its 99.5th percentile).
-    probe = np.exp(np.linspace(np.log(1), np.log(2 ** 16), 4000))
-    xtop = quantile(incident_cdf(lams, probe), probe, 0.995)
-    xs = np.exp(np.linspace(np.log(0.2), np.log(xtop), 300))
+    xs = np.exp(np.linspace(np.log(0.25), np.log(4096), 300))   # fixed $0.25-$4096 window
 
+    probe = np.exp(np.linspace(np.log(1), np.log(2 ** 16), 4000))   # wide grid for the quantiles
+    iyp = incident_cdf(lams, probe)
     for (label, _sub, _dirs), (costs, wins), lam in zip(STEPS, loaded, lams):
         med = np.log(2) / lam if lam > 0 else float("inf")
         print(f"{label:8} n={len(costs):4d}  p={wins.mean():.4f}  $/audit={costs.mean():.2f}  "
               f"median ${med:,.0f}")
-    iy = incident_cdf(lams, xs)
     print("\nWHOLE INCIDENT -- run each step until it lands, then move on:")
     for q in (0.50, 0.80, 0.90, 0.95):
-        print(f"  P>={q:.2f} of recreating all four:  ${quantile(iy, xs, q):,.0f}")
+        print(f"  P>={q:.2f} of recreating all four:  ${quantile(iyp, probe, q):,.0f}")
 
-    draw(loaded, lams, xs, bands=False, out=OUTDIR / "part2_cost.png")
-    draw(loaded, lams, xs, bands=True, out=OUTDIR / "part2_cost_ci.png")
+    draw(loaded, lams, xs, out=OUTDIR / "part2_cost_ci.png")
 
 
 if __name__ == "__main__":
