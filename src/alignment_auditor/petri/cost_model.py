@@ -1,6 +1,7 @@
 """Per-audit dollar cost and outcome, joined from a run's conv/ and scored/ logs.
 
-Shared by plot_steps_1234.py (outcomes) and plot_cost_scaling.py (outcomes + cost).
+Used by the figure scripts under analysis/ -- plot_part2_cost.py (per-audit cost + outcome)
+and plot_part3_memory.py (the memory run's cost-to-first-hit).
 
 WHERE THE COST COMES FROM
 Inspect records `model_usage` per sample: a {model -> ModelUsage} dict with input/output,

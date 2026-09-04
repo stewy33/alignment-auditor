@@ -151,15 +151,17 @@ uv run exp experiments/part2_petri/part2_step3_exploit_share.yaml
 uv run exp experiments/part2_petri/part2_step4_hf_cheat.yaml
 ```
 
-Figures:
+Figures (both write to `results/part2_petri/figures/`):
 
 ```bash
-uv run python analysis/plot_steps_1234.py     # elicitation rate per step  -> results/.../figures/
-uv run python analysis/plot_cost_scaling.py   # cost per step + P(elicitation) vs cost
+uv run python analysis/plot_part2_rates.py    # elicitation rate per step (part2_elicitation_rate.png)
+uv run python analysis/plot_part2_cost.py     # P(>=1 elicitation) vs compute cost, per step + all four
+                                              #   -> part2_cost.png (+ part2_cost_ci.png, with Wilson bands)
 ```
 
-Step 2 is the hardest to elicit; `part2_step2_iid_baseline.yaml` measures its low rate at large n and
-doubles as the "naive scaling" baseline for Part 3.
+Both read the scored logs once and cache the per-step counts/costs to JSON next to the figures, so they
+re-render instantly (the raw logs are gitignored; the caches are committed). Step 2 is the hardest to
+elicit and doubles as the "naive scaling" baseline for Part 3.
 
 ## Part 3 — Poor-Man's-RL
 
@@ -169,7 +171,8 @@ generational loop). Demonstrated on Step 2.
 
 ```bash
 uv run exp experiments/part3_poor_mans_rl/part3_step2_memory.yaml
-uv run python analysis/plot_step2_memory.py   # elicitation vs cost: naive (Part-2 iid) vs Poor-Man's-RL
+uv run python analysis/plot_part3_memory.py   # cost-to-first-hit: naive iid (Part 2) vs Poor-Man's-RL
+                                              #   -> part3_vs_part2_cost.png + part3_cost_reduction.png
 ```
 
 ---

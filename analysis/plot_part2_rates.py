@@ -4,7 +4,7 @@
 
 Reads the scored logs for each step and draws a single-hue magnitude bar chart:
 valid-hit rate (signature AND scenario_valid) per step, with Wilson 95% whiskers and
-direct labels. Step 2 pools the two nudged-seed runs (fresh + A/B treatment).
+direct labels. Step 2 pools the two runs of the same nudged seed (local + remote): 2/509.
 Output: results/part2_petri/figures/part2_elicitation_rate.png
 """
 
@@ -90,7 +90,7 @@ def counts():
     import json
     if CACHE.exists():
         return {k: tuple(v) for k, v in json.loads(CACHE.read_text()).items()}
-    c = {label: rate(dirs) for label, sub, dirs in STEPS}
+    c = {label: rate(dirs) for label, _sub, dirs in STEPS}
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps({k: list(v) for k, v in c.items()}))
     return c
@@ -107,8 +107,8 @@ def main():
 
     plt.rcParams.update({"font.family": "DejaVu Sans", "text.color": INK,
                          "axes.edgecolor": GRID, "figure.facecolor": BG, "axes.facecolor": BG})
-    fig, ax = plt.subplots(figsize=(8.2, 5.0))
-    fig.subplots_adjust(left=0.09, right=0.97, top=0.74, bottom=0.13)
+    fig, ax = plt.subplots(figsize=(8.2, 4.6))
+    fig.subplots_adjust(left=0.09, right=0.97, top=0.93, bottom=0.14)
 
     xs = range(len(data))
     ymax = max(d[4] for d in data) * 1.28 + 0.03
@@ -117,11 +117,9 @@ def main():
         # Wilson whisker
         ax.plot([x, x], [lo, hi], color=AMBER_D, lw=1.6, zorder=4, solid_capstyle="round")
         ax.plot([x - 0.05, x + 0.05], [hi, hi], color=AMBER_D, lw=1.6, zorder=4)
-        # direct labels: % (bold navy) + fraction (muted)
+        # direct label: % (bold navy)
         ax.text(x, hi + ymax * 0.035, f"{p*100:.1f}%", ha="center", va="bottom",
                 fontsize=15, fontweight="bold", color=INK)
-        ax.text(x, hi + ymax * 0.035 + ymax * 0.075, f"{k}/{n}", ha="center", va="bottom",
-                fontsize=9.5, color=MUTED)
 
     # x tick labels: step + descriptor
     ax.set_xticks(list(xs))
@@ -132,25 +130,13 @@ def main():
     ax.set_ylim(0, ymax)
     ax.set_yticks([i / 100 for i in range(0, int(ymax * 100) + 1, 10)])
     ax.set_yticklabels([f"{int(t*100)}%" for t in ax.get_yticks()], fontsize=9.5, color=MUTED)
-    ax.set_ylabel("valid elicitation rate", fontsize=10.5, color=INK)
+    ax.set_ylabel("Elicitation Rate", fontsize=10.5, color=INK)
     ax.grid(axis="y", color=GRID, lw=1, zorder=0)
     ax.set_axisbelow(True)
     for s in ("top", "right", "left"):
         ax.spines[s].set_visible(False)
     ax.spines["bottom"].set_color(GRID)
     ax.tick_params(length=0)
-
-    # title block (amber eyebrow + navy title), reference-style
-    fig.text(0.09, 0.90, "P A R T   2   ·   A U T O M A T E D   A U D I T I N G", fontsize=10,
-             fontweight="bold", color=AMBER)
-    fig.text(0.09, 0.83, "How often a bare auditor elicits each behaviour", fontsize=16.5,
-             fontweight="bold", color=INK)
-
-    # Step-2 callout (tucked into the gap above the tiny Step-2 bar)
-    ax.annotate("the hard one —\n~50–100× rarer,\nthe compute bottleneck",
-                xy=(1, max(data[1][6], 0.01)), xytext=(0.62, ymax * 0.45),
-                fontsize=9, color=MUTED, ha="center", va="center",
-                arrowprops=dict(arrowstyle="-", color=MUTED, lw=1, connectionstyle="arc3,rad=0.18"))
 
     out = REPO / "results/part2_petri/figures/part2_elicitation_rate.png"
     out.parent.mkdir(parents=True, exist_ok=True)
