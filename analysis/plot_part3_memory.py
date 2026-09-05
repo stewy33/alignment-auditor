@@ -1,4 +1,4 @@
-"""Part 3 vs Part 2 -- cost to first valid Step-2 hit: naive iid vs the Poor-Man's-RL loop.
+"""Part 3 vs Part 2 -- cost to first valid Step-2 hit: naive iid vs the Rudimentary-RL loop.
 
     uv run python analysis/plot_part3_memory.py
 
@@ -8,7 +8,7 @@ elicitation). Two arms:
   * iid (Part 2, naive)  -- the bare auditor, Step 2 pooled over the nudged-seed runs.
     Cost-to-first-hit is the geometric wait at the measured mean $/audit, so the closed-form CDF
     is 1-e^(-λX), shaded with a band from the Wilson interval on p. The "just sample more" line.
-  * Poor-Man's-RL (Part 3) -- the reviewer-driven memory loop. One real dollar cost per replicate
+  * Rudimentary-RL (Part 3) -- the reviewer-driven memory loop. One real dollar cost per replicate
     to its first valid hit (cost_model.cost_to_first_hit: the whole hitting wave + the amortised
     reviewer spend; a replicate that never hits is right-censored and dropped). With few
     replicates we FIT a log-normal (positive, right-skewed cost) by probability-plot regression
@@ -44,7 +44,7 @@ BG    = "#FBFAF8"
 INK   = "#2C3E50"
 MUTED = "#8A8A84"
 GRID  = "#ECEAE4"
-AMBER = "#E8833A"   # Poor-Man's-RL (the hero)
+AMBER = "#E8833A"   # Rudimentary-RL (the hero)
 AMBER_D = "#C96A24"
 IID   = "#7E8A97"   # naive iid baseline (recessive slate)
 
@@ -150,7 +150,7 @@ def draw_bars(lam, mu, sigma, out):
     w = 0.38
     ymax = max(iid) * 1.20
     ax.bar(x - w / 2, iid, w, color=IID, zorder=3, label="Part 2 · iid")
-    ax.bar(x + w / 2, mem, w, color=AMBER, zorder=3, label="Part 3 · Poor-Man's-RL")
+    ax.bar(x + w / 2, mem, w, color=AMBER, zorder=3, label="Part 3 · Rudimentary-RL")
     for xi, v in zip(x - w / 2, iid):
         ax.text(xi, v + ymax * 0.012, f"${v:,.0f}", ha="center", va="bottom",
                 fontsize=9, color=MUTED)
@@ -227,7 +227,7 @@ def main():
     lo, hi = np.percentile(boot, [5, 95], axis=0)
     ax.fill_between(xs, lo, hi, color=AMBER, alpha=0.16, linewidth=0, zorder=4)
     ax.plot(xs, fit_y, "-", color=AMBER, linewidth=3.0, zorder=6,
-            label="Part 3 · Poor-Man's-RL (log-normal fit)")
+            label="Part 3 · Rudimentary-RL (log-normal fit)")
     # the replicates at their (i-0.5)/n plotting positions -- the points the line interpolates
     pp = plotting_pos(len(costs))
     ax.scatter(costs, pp, s=44, color=AMBER_D, edgecolors=BG, linewidths=1.2, zorder=7,
