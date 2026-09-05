@@ -1,4 +1,4 @@
-"""Generational memory-augmented auditing loop (the "Poor Man's RL" runner).
+"""Generational memory-augmented auditing loop (the "Rudimentary RL" runner).
 
 A memory run is a sequence of generations for one cell (auditor x target x base seed). Each
 generation injects the current playbook into the auditor's scenario, runs a wave of K audits

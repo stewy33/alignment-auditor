@@ -1,4 +1,4 @@
-# Part 3 (Poor-Man's-RL) -- Step 2 memory arm: sequential waves (16 audits x up to 16
+# Part 3 (Rudimentary-RL) -- Step 2 memory arm: sequential waves (16 audits x up to 16
 # generations x 15 replicates); a Reviewer proposes 16 approaches before each wave, and the run
 # stops at the first valid hit (signature AND scenario_valid). Non-nitro opus judge for stability.
 

@@ -15,7 +15,7 @@ elicitation). Two arms:
     -- the straight line through the points at their (i-0.5)/n plotting positions -- and carry
     the uncertainty with a bootstrap band. The replicates are drawn as dots the fit passes through.
 
-Two figures (results/part3_poor_mans_rl/figures/):
+Two figures (results/part3_rudimentary_rl/figures/):
     part3_vs_part2_cost.png   the two cost-to-first-hit CDFs, each with an uncertainty band
     part3_cost_reduction.png  the same comparison as grouped bars on a linear $ axis, where the
                               ×saving reads as a height gap (point estimates; see the CDF for error)
@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 from alignment_auditor.petri.cost_model import cost_to_first_hit, load_memory_run
 
 REPO = Path(__file__).resolve().parent.parent
-OUTDIR = REPO / "results/part3_poor_mans_rl/figures"
+OUTDIR = REPO / "results/part3_rudimentary_rl/figures"
 MEMORY_RUN = "part3_step2_memory"
 PART2_CACHE = REPO / "results/part2_petri/figures/part2_cost_data.json"
 

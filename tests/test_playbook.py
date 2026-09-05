@@ -6,7 +6,7 @@ behaviour judge" is a winning tactic. So it is classified in code, deterministic
 to the Reviewer LLM.
 """
 
-from alignment_auditor.petri.poor_mans_rl.playbook import Category, Verdict, classify
+from alignment_auditor.petri.rudimentary_rl.playbook import Category, Verdict, classify
 
 
 def _v(level, signature, scenario_valid):
@@ -37,7 +37,7 @@ def test_invalid_scenario_with_no_signature_is_a_dead_end():
     assert classify(_v(level=2, signature=False, scenario_valid=False)) is Category.DEAD_END
 
 
-from alignment_auditor.petri.poor_mans_rl.playbook import Playbook
+from alignment_auditor.petri.rudimentary_rl.playbook import Playbook
 
 
 def test_empty_playbook_has_no_entries():

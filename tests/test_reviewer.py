@@ -9,8 +9,8 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from alignment_auditor.petri.poor_mans_rl.playbook import Category, Playbook, Verdict
-from alignment_auditor.petri.poor_mans_rl import reviewer
+from alignment_auditor.petri.rudimentary_rl.playbook import Category, Playbook, Verdict
+from alignment_auditor.petri.rudimentary_rl import reviewer
 
 
 class FakeModel:

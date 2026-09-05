@@ -10,7 +10,7 @@ system — three ways:
   environment + an [Inspect](https://inspect.aisi.org.uk/) task, reviewed by hand.
 - **Part 2 — Automated auditing** (`petri/`): a bare [Petri](https://meridianlabs-ai.github.io/inspect_petri/)
   auditor agent elicits each step from only a high-level description.
-- **Part 3 — Poor-Man's-RL** (`petri/poor_mans_rl/`): a Reviewer agent reviews the previous wave of
+- **Part 3 — Rudimentary-RL** (`petri/rudimentary_rl/`): a Reviewer agent reviews the previous wave of
   auditing strategies and proposes new ones, improving compute-efficiency on the hardest step (Step 2).
 
 Throughout, the **target** is GLM 5.2 and the **judge** is Opus 4.8 (both via OpenRouter, `:nitro`
@@ -91,13 +91,13 @@ src/alignment_auditor/
     custom_judge.py       generic runner for the seed's front-matter judge rubrics
     cost_model.py         per-audit dollar cost + outcome join (used by the plotters)
     seeds/                the four canonical seeds, one dir per step (see seeds/README.md)
-    poor_mans_rl/         Part 3: memory_audit.py, reviewer.py, playbook.py
+    rudimentary_rl/         Part 3: memory_audit.py, reviewer.py, playbook.py
   scripts/                smoke_test.py
 
 experiments/              run configs, one subdir per blog part
   part1_docker/           shell runners for the four Docker steps
   part2_petri/            part2_step{1..4}_*.yaml (one bare-auditor config per step)
-  part3_poor_mans_rl/     part3_step2_memory.yaml
+  part3_rudimentary_rl/     part3_step2_memory.yaml
 analysis/                 plot scripts (read logs/Docent -> figures)
 results/                  figures, per blog part
 logs/                     raw .eval logs (gitignored)
@@ -156,22 +156,22 @@ Figures (both write to `results/part2_petri/figures/`):
 ```bash
 uv run python analysis/plot_part2_rates.py    # elicitation rate per step (part2_elicitation_rate.png)
 uv run python analysis/plot_part2_cost.py     # P(>=1 elicitation) vs compute cost, per step + all four
-                                              #   -> part2_cost.png (+ part2_cost_ci.png, with Wilson bands)
+                                              #   -> part2_cost_ci.png (with Wilson bands)
 ```
 
 Both read the scored logs once and cache the per-step counts/costs to JSON next to the figures, so they
 re-render instantly (the raw logs are gitignored; the caches are committed). Step 2 is the hardest to
 elicit and doubles as the "naive scaling" baseline for Part 3.
 
-## Part 3 — Poor-Man's-RL
+## Part 3 — Rudimentary-RL
 
 The auditor runs in sequential waves; before each wave a Reviewer reads the previous wave's strategies
 and outcomes and proposes new ones (a `memory:` block in the config switches `uv run exp` to the
 generational loop). Demonstrated on Step 2.
 
 ```bash
-uv run exp experiments/part3_poor_mans_rl/part3_step2_memory.yaml
-uv run python analysis/plot_part3_memory.py   # cost-to-first-hit: naive iid (Part 2) vs Poor-Man's-RL
+uv run exp experiments/part3_rudimentary_rl/part3_step2_memory.yaml
+uv run python analysis/plot_part3_memory.py   # cost-to-first-hit: naive iid (Part 2) vs Rudimentary-RL
                                               #   -> part3_vs_part2_cost.png + part3_cost_reduction.png
 ```
 
