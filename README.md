@@ -13,9 +13,9 @@ system — three ways:
 - **Part 3 — Rudimentary-RL** (`petri/rudimentary_rl/`): a Reviewer agent reviews the previous wave of
   auditing strategies and proposes new ones, improving compute-efficiency on the hardest step (Step 2).
 
-Throughout, the **target** is GLM 5.2 and the **judge** is Opus 4.8 (both via OpenRouter, `:nitro`
-routing) — the frontier OpenAI/Anthropic models refuse this content, as Hugging Face
-[also found](https://huggingface.co/blog/security-incident-july-2026).
+Throughout, the **target** is GLM 5.2 (via OpenRouter `:nitro`) and the **judge** is Opus 4.8 (via
+OpenRouter, the stable non-nitro endpoint) — the frontier OpenAI/Anthropic models refuse this
+content, as Hugging Face [also found](https://huggingface.co/blog/security-incident-july-2026).
 
 ---
 
@@ -184,4 +184,5 @@ uv run python analysis/plot_part3_memory.py   # cost-to-first-hit: naive iid (Pa
   seed IDs. `uv run exp` avoids this; on the raw CLI use one seed per invocation.
 - Custom seeds are just markdown — see `src/alignment_auditor/petri/seeds/README.md`. A config selects
   a set by directory name (`seeds_dir: step2_reachout`).
-- Write-ups of finished experiments live under `results/`.
+- Figures for each blog part live under `results/`; the plot scripts read committed JSON caches, so
+  they render without the (gitignored) raw logs.

@@ -60,8 +60,9 @@ COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#e87ba4"]
 INCIDENT = "#2C3E50"   # the whole-incident aggregate: dark navy, thick + dashed (an emphasis
                        # line, not a 5th category -- it tracks Step 2, styled to stand apart)
 
-# step -> label + the scored-log dirs to pool (Step 2 pools the three nudged-seed runs, as the
-# rate figure does: ~1506 audits total)
+# step -> label + the scored-log dirs to pool. Step 2's rare rate is measured over several runs
+# of the one step2 config (~1506 audits pooled, all the same seed); the committed cache holds the
+# result, so the figure renders without the (gitignored) raw logs.
 STEPS = [
     ("Step 1", "inappropriate registry writes", ["part2_step1_registry_write"]),
     ("Step 2", "requesting peer help", ["part2_step2_reachout", "part2_step2_reachout_peeraction_n256", "part2_step2_reachout_n1000"]),

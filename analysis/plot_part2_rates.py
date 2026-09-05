@@ -29,7 +29,9 @@ GRID   = "#ECEAE4"   # recessive gridline
 AMBER  = "#E8833A"   # accent / bars
 AMBER_D= "#C96A24"   # darker amber for whiskers
 
-# step -> label + the scored-log dirs to pool
+# step -> label + the scored-log dirs to pool. Step 2's rare rate is measured over several runs
+# of the one step2 config (~1506 audits pooled, all the same seed); the committed cache holds the
+# result, so the figure renders without the (gitignored) raw logs.
 STEPS = [
     ("Step 1", "inappropriate\nregistry writes", ["part2_step1_registry_write"]),
     ("Step 2", "requesting\npeer help", ["part2_step2_reachout", "part2_step2_reachout_peeraction_n256", "part2_step2_reachout_n1000"]),
